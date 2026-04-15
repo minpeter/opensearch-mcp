@@ -1,7 +1,0 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "rules": {
-    "no-console": ["error", { "allow": ["warn", "error"] }]
-  },
-  "ignorePatterns": ["*.test.ts"]
-}

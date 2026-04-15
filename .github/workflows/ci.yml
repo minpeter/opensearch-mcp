@@ -28,8 +28,8 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Lint
-        run: pnpm run lint
+      - name: Check (biome via ultracite)
+        run: pnpm run check
 
       - name: Test (unit only — skip integration)
         run: pnpm exec vitest run --exclude 'src/__tests__/integration.test.ts'
