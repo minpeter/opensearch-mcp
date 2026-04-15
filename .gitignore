@@ -33,3 +33,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # sisyphus
 .sisyphus/evidence/
+
+# sisyphus internal
+.sisyphus/
+
+# reference implementation
+ref-duckduckgo-mcp/
