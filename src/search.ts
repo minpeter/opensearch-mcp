@@ -72,8 +72,8 @@ export async function searchWithRetryAndCache(
     retries: 2,
     minTimeout: 2000,
     factor: 2,
-    shouldRetry: (err) => {
-      if (err instanceof Error && err.message.includes("No Results")) {
+    shouldRetry: ({ error }) => {
+      if (error.message.includes("No Results")) {
         return false;
       }
       return true;

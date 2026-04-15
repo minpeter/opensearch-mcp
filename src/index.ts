@@ -21,7 +21,6 @@ server.registerTool(
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
-        .number()
         .int()
         .positive()
         .max(15)
@@ -66,7 +65,7 @@ server.registerTool(
     description:
       "Fetch a URL and return its content as markdown. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
     inputSchema: z.object({
-      url: z.string().url().describe("URL to fetch and extract content from."),
+      url: z.url().describe("URL to fetch and extract content from."),
     }),
     outputSchema: z.object({
       title: z.string(),
