@@ -1,5 +1,5 @@
-declare module 'turndown-plugin-gfm' {
-  import type TurndownService from 'turndown';
+declare module "turndown-plugin-gfm" {
+  import type TurndownService from "turndown";
 
   export function gfm(service: TurndownService): void;
   export function highlightedCodeBlock(service: TurndownService): void;

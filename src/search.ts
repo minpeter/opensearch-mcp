@@ -1,22 +1,22 @@
-import * as cheerio from 'cheerio';
-import pRetry from 'p-retry';
+import { load } from "cheerio";
+import pRetry from "p-retry";
 
-import { TtlCache } from './cache.ts';
-import { getRandomUserAgent } from './user-agents.ts';
+import { TtlCache } from "./cache.ts";
+import { getRandomUserAgent } from "./user-agents.ts";
 
 export interface SearchResult {
+  snippet: string;
   title: string;
   url: string;
-  snippet: string;
 }
 
 export async function search(query: string): Promise<SearchResult[]> {
   const formData = new FormData();
-  formData.append('q', query);
+  formData.append("q", query);
 
-  const res = await fetch('https://html.duckduckgo.com/html/', {
-    method: 'POST',
-    headers: { 'User-Agent': getRandomUserAgent() },
+  const res = await fetch("https://html.duckduckgo.com/html/", {
+    method: "POST",
+    headers: { "User-Agent": getRandomUserAgent() },
     body: formData,
     signal: AbortSignal.timeout(8000),
   });
@@ -26,24 +26,28 @@ export async function search(query: string): Promise<SearchResult[]> {
   }
 
   const html = await res.text();
-  const $ = cheerio.load(html);
+  const $ = load(html);
 
-  if ($('.no-results').length > 0) {
-    throw new Error('No Results');
+  if ($(".no-results").length > 0) {
+    throw new Error("No Results");
   }
 
-  if ($('.challenge-form, #challenge-form').length > 0) {
-    throw new Error('Too many requests (Bot detected)');
+  if ($(".challenge-form, #challenge-form").length > 0) {
+    throw new Error("Too many requests (Bot detected)");
   }
 
   const results: SearchResult[] = [];
 
-  $('.zci, #links > .result, .result.results_links, .result.results_links_deep').each((_, el) => {
-    const titleEl = $(el).find('.zci__heading > a, .result__title .result__a, .result__a').first();
-    const snippetEl = $(el).find('.zci__result, .result__snippet').first();
+  $(
+    ".zci, #links > .result, .result.results_links, .result.results_links_deep"
+  ).each((_, el) => {
+    const titleEl = $(el)
+      .find(".zci__heading > a, .result__title .result__a, .result__a")
+      .first();
+    const snippetEl = $(el).find(".zci__result, .result__snippet").first();
 
     const title = titleEl.text().trim();
-    const url = titleEl.attr('href')?.trim() ?? '';
+    const url = titleEl.attr("href")?.trim() ?? "";
     const snippet = snippetEl.text().trim();
 
     if (title && url && snippet) {
@@ -56,7 +60,10 @@ export async function search(query: string): Promise<SearchResult[]> {
 
 const searchCache = new TtlCache<string, SearchResult[]>(3 * 60 * 1000);
 
-export async function searchWithRetryAndCache(query: string, maxResults: number): Promise<SearchResult[]> {
+export async function searchWithRetryAndCache(
+  query: string,
+  maxResults: number
+): Promise<SearchResult[]> {
   if (searchCache.has(query)) {
     return (searchCache.get(query) ?? []).slice(0, maxResults);
   }
@@ -66,7 +73,9 @@ export async function searchWithRetryAndCache(query: string, maxResults: number)
     minTimeout: 2000,
     factor: 2,
     shouldRetry: (err) => {
-      if (err instanceof Error && err.message.includes('No Results')) return false;
+      if (err instanceof Error && err.message.includes("No Results")) {
+        return false;
+      }
       return true;
     },
   });

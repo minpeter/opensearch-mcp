@@ -1,11 +1,16 @@
 export class TtlCache<K, V> {
   private readonly store = new Map<K, { value: V; expiresAt: number }>();
+  private readonly ttlMs: number;
 
-  constructor(private readonly ttlMs: number) {}
+  constructor(ttlMs: number) {
+    this.ttlMs = ttlMs;
+  }
 
   get(key: K): V | undefined {
     const entry = this.store.get(key);
-    if (!entry) return undefined;
+    if (!entry) {
+      return undefined;
+    }
     if (Date.now() >= entry.expiresAt) {
       this.store.delete(key);
       return undefined;
