@@ -1,13 +1,13 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['esm'],
-  outDir: 'out',
+  entry: ["src/index.ts"],
+  format: ["esm"],
+  outDir: "out",
   sourcemap: true,
   minify: true,
   clean: true,
   banner: {
-    js: '#!/usr/bin/env node',
+    js: "#!/usr/bin/env node",
   },
 });
