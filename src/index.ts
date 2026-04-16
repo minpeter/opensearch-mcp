@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
-import { type SearchEngineName, searchWithRetryAndCache } from "./search.ts";
+import { SEARCH_ENGINE_NAMES, searchWithRetryAndCache } from "./search.ts";
 
 const version: string = pkg.version;
 
@@ -30,10 +30,7 @@ server.registerTool(
     outputSchema: z.object({
       results: z.array(
         z.object({
-          engine: z.enum(["Bing", "DuckDuckGo", "Google"] satisfies [
-            SearchEngineName,
-            ...SearchEngineName[],
-          ]),
+          engine: z.enum(SEARCH_ENGINE_NAMES),
           title: z.string(),
           url: z.string(),
           snippet: z.string(),

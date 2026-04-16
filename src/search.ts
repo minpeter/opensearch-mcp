@@ -4,7 +4,9 @@ import pRetry from "p-retry";
 import { TtlCache } from "./cache.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
-export type SearchEngineName = "Bing" | "DuckDuckGo" | "Google";
+export const SEARCH_ENGINE_NAMES = ["Bing", "DuckDuckGo", "Google"] as const;
+
+export type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
 
 export interface SearchResult {
   engine: SearchEngineName;
