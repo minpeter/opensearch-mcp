@@ -30,7 +30,7 @@ export class TtlCache<K, V> {
   getOrSet(key: K, factory: () => Promise<V>): Promise<V> {
     const cachedValue = this.get(key);
     if (cachedValue !== undefined) {
-      return cachedValue;
+      return Promise.resolve(cachedValue);
     }
 
     const pendingValue = this.pending.get(key);
