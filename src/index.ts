@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
-import { searchWithRetryAndCache } from "./search.ts";
+import { SEARCH_ENGINE_NAMES, searchWithRetryAndCache } from "./search.ts";
 
 const version: string = pkg.version;
 
@@ -17,7 +17,7 @@ server.registerTool(
   "web_search",
   {
     description:
-      "Search DuckDuckGo and return title, URL, and snippet for each result. Use when higher-quality websearch tools are unavailable.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
@@ -30,6 +30,7 @@ server.registerTool(
     outputSchema: z.object({
       results: z.array(
         z.object({
+          engine: z.enum(SEARCH_ENGINE_NAMES),
           title: z.string(),
           url: z.string(),
           snippet: z.string(),

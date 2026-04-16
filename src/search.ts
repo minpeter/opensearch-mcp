@@ -4,15 +4,22 @@ import pRetry from "p-retry";
 import { TtlCache } from "./cache.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
+export const SEARCH_ENGINE_NAMES = ["Bing", "DuckDuckGo", "Google"] as const;
+
+export type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
+
 export interface SearchResult {
+  engine: SearchEngineName;
   snippet: string;
   title: string;
   url: string;
 }
 
+/** Internal shape returned by parse functions before the engine name is stamped. */
+type ParsedResult = Omit<SearchResult, "engine">;
+
 type EngineFailureKind = "blocked" | "no-results" | "transient";
 
-type SearchEngineName = "DuckDuckGo" | "Google" | "Bing";
 type CheerioSelection = ReturnType<ReturnType<typeof load>>;
 
 interface SearchEngine {
@@ -21,7 +28,7 @@ interface SearchEngine {
     url: string;
   };
   name: SearchEngineName;
-  parse(html: string): SearchResult[];
+  parse(html: string): ParsedResult[];
 }
 
 interface SearchExecutionMetadata {
@@ -264,10 +271,10 @@ async function searchWithEngine(
   }
 
   const html = await response.text();
-  return engine.parse(html);
+  return engine.parse(html).map((r) => ({ ...r, engine: engine.name }));
 }
 
-function parseDuckDuckGoResults(html: string): SearchResult[] {
+function parseDuckDuckGoResults(html: string): ParsedResult[] {
   const $ = load(html);
 
   if ($(".no-results").length > 0) {
@@ -302,7 +309,7 @@ function parseDuckDuckGoResults(html: string): SearchResult[] {
   return ensureResults(results, $, "DuckDuckGo");
 }
 
-function parseGoogleResults(html: string): SearchResult[] {
+function parseGoogleResults(html: string): ParsedResult[] {
   const $ = load(html);
   const pageText = $.text();
 
@@ -346,7 +353,7 @@ function parseGoogleResults(html: string): SearchResult[] {
   return ensureResults(results, $, "Google");
 }
 
-function parseBingResults(html: string): SearchResult[] {
+function parseBingResults(html: string): ParsedResult[] {
   const $ = load(html);
   const pageText = $.text();
 
@@ -380,9 +387,9 @@ function parseBingResults(html: string): SearchResult[] {
 function collectResults(
   $: ReturnType<typeof load>,
   selector: string,
-  getResult: (result: ReturnType<typeof load>) => SearchResult
-): SearchResult[] {
-  const results: SearchResult[] = [];
+  getResult: (result: ReturnType<typeof load>) => ParsedResult
+): ParsedResult[] {
+  const results: ParsedResult[] = [];
 
   $(selector).each((_, element) => {
     const resultHtml = $.html(element);
@@ -404,10 +411,10 @@ function collectResults(
 }
 
 function ensureResults(
-  selectorResults: SearchResult[],
+  selectorResults: ParsedResult[],
   $: ReturnType<typeof load>,
   engine: SearchEngineName
-): SearchResult[] {
+): ParsedResult[] {
   if (selectorResults.length > 0) {
     return selectorResults;
   }
@@ -537,8 +544,8 @@ function tryDecodeBingBase64Target(encodedTarget: string): string {
 function extractHeuristicResults(
   $: ReturnType<typeof load>,
   engine: SearchEngineName
-): SearchResult[] {
-  const results: SearchResult[] = [];
+): ParsedResult[] {
+  const results: ParsedResult[] = [];
 
   $("a[href]").each((_, element) => {
     const anchor = $(element);
@@ -601,7 +608,7 @@ function toSnippet(text: string, title: string): string {
   return truncateText(cleanedText, MAX_HEURISTIC_SNIPPET_LENGTH);
 }
 
-function normalizeResult(result: SearchResult): SearchResult | null {
+function normalizeResult(result: ParsedResult): ParsedResult | null {
   const title = cleanText(result.title);
   if (!title) {
     return null;
@@ -624,7 +631,7 @@ function normalizeResult(result: SearchResult): SearchResult | null {
   return { snippet, title, url };
 }
 
-function dedupeResults(results: SearchResult[]): SearchResult[] {
+function dedupeResults(results: ParsedResult[]): ParsedResult[] {
   const seenUrls = new Set<string>();
 
   return results.filter((result) => {

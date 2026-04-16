@@ -40,7 +40,9 @@ describe("integration: web_search (real network)", () => {
     }
 
     expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results.every((r) => r.title && r.url && r.snippet)).toBe(true);
+    expect(
+      results.every((r) => r.title && r.url && r.snippet && r.engine)
+    ).toBe(true);
   });
 });
 
