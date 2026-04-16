@@ -343,10 +343,6 @@ async function executeSearch(query: string): Promise<SearchResult[]> {
       return await engine.search(query);
     } catch (error) {
       if (error instanceof SearchEngineError) {
-        if (error.kind === "misconfigured") {
-          throw new SearchExecutionError(error.message, false);
-        }
-
         failures.push(error);
         continue;
       }
@@ -571,7 +567,12 @@ function parseExaResults(responseBody: string): ParsedResult[] {
   const rawResults = getArrayValue(parsed, "results");
   const results = rawResults
     .map((item) => {
-      const highlights = getArrayValue(item, "highlights")
+      const highlights = getArrayValue(
+        typeof item === "object" && item !== null && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : null,
+        "highlights"
+      )
         .map((highlight) =>
           typeof highlight === "string" ? highlight.trim() : ""
         )

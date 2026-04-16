@@ -120,18 +120,37 @@ describe("search", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("surfaces API auth failures instead of silently degrading", async () => {
+  it("continues to later providers when Brave auth is misconfigured", async () => {
     process.env.BRAVE_SEARCH_API_KEY = "bad-key";
+    process.env.EXA_API_KEY = "exa-key";
 
     const mockFetch = vi
       .fn()
-      .mockResolvedValueOnce(new Response("", { status: 401 }));
+      .mockResolvedValueOnce(new Response("", { status: 401 }))
+      .mockResolvedValueOnce(
+        createMockJsonResponse({
+          results: [
+            {
+              highlights: ["Exa fallback after Brave auth failure."],
+              title: "Exa fallback",
+              url: "https://example.com/exa-auth-fallback",
+            },
+          ],
+        })
+      );
     vi.stubGlobal("fetch", mockFetch);
 
-    await expect(search("github")).rejects.toThrow(
-      "Brave fetch failed with status 401"
-    );
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const results = await search("github");
+
+    expect(results).toEqual([
+      {
+        engine: "Exa",
+        snippet: "Exa fallback after Brave auth failure.",
+        title: "Exa fallback",
+        url: "https://example.com/exa-auth-fallback",
+      },
+    ]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("falls back when Brave returns 403", async () => {
