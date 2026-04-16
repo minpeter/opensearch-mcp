@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
-import { fetchResultSchema, fetchUrlWithCache } from "./fetch.ts";
+import { fetchUrlWithCache } from "./fetch.ts";
 import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
 
 const version: string = pkg.version;
