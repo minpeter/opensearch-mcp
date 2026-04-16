@@ -7,7 +7,6 @@ import {
   createFetchToolResult,
   createSearchContent,
   getFetchMaxCharacters,
-  getFetchUrls,
   getSearchResultCount,
   webFetchInputSchema,
   webSearchInputSchema,
@@ -50,20 +49,20 @@ describe("webFetchInputSchema", () => {
     expect(getSearchResultCount(parsed)).toBe(5);
   });
 
-  it("accepts the legacy url field", () => {
-    const parsed = webFetchInputSchema.parse({
-      url: "https://example.com/legacy",
-    });
-
-    expect(parsed.url).toBe("https://example.com/legacy");
-  });
-
   it("accepts batch urls", () => {
     const parsed = webFetchInputSchema.parse({
       urls: ["https://example.com/one", "https://example.com/two"],
     });
 
     expect(parsed.urls).toHaveLength(2);
+  });
+
+  it("requires urls instead of the removed legacy url alias", () => {
+    expect(() =>
+      webFetchInputSchema.parse({
+        url: "https://example.com/legacy",
+      })
+    ).toThrow();
   });
 
   it("accepts maxCharacters for batched fetch requests", () => {
@@ -74,24 +73,19 @@ describe("webFetchInputSchema", () => {
 
     expect(getFetchMaxCharacters(parsed)).toBe(4000);
   });
-});
 
-describe("getFetchUrls", () => {
-  it("keeps batch urls first and deduplicates the legacy url alias", () => {
-    const urls = getFetchUrls({
-      url: "https://example.com/one",
-      urls: [
-        "https://example.com/two",
-        "https://example.com/one",
-        "https://example.com/three",
-      ],
+  it("remains exportable as an object schema for listTools", () => {
+    const normalizedSchema = normalizeObjectSchema(webFetchInputSchema);
+    const jsonSchema = normalizedSchema
+      ? toJsonSchemaCompat(normalizedSchema)
+      : undefined;
+
+    expect(normalizedSchema).toBeDefined();
+    expect(jsonSchema?.properties).toMatchObject({
+      urls: expect.objectContaining({ type: "array" }),
+      maxCharacters: expect.objectContaining({ type: "integer" }),
     });
-
-    expect(urls).toEqual([
-      "https://example.com/two",
-      "https://example.com/one",
-      "https://example.com/three",
-    ]);
+    expect(jsonSchema?.properties).not.toHaveProperty("url");
   });
 });
 
