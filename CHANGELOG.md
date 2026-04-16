@@ -1,5 +1,11 @@
 # opensearch-mcp
 
+## 0.1.5
+
+### Patch Changes
+
+- 274b5cc: Align `web_fetch` with Exa-style `urls` input while refreshing `web_search`/`web_fetch` tool copy so MCP clients receive cleaner tool descriptions from `tools/list`.
+
 ## 0.1.4
 
 ### Patch Changes
