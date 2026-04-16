@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { search, searchWithRetryAndCache } from "../search.ts";
 
 const fixturesDir = join(import.meta.dirname, "fixtures");
+const ORIGINAL_ENV = { ...process.env };
+
 function createMockResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,
@@ -13,16 +15,245 @@ function createMockResponse(html: string, status = 200): Response {
   });
 }
 
+function createMockJsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function readFixture(name: string): string {
   return readFileSync(join(fixturesDir, name), "utf-8");
 }
 
+function resetSearchEnv(): void {
+  process.env = { ...ORIGINAL_ENV };
+  delete process.env.BRAVE_SEARCH_API_KEY;
+  delete process.env.EXA_API_KEY;
+  delete process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE;
+}
+
 describe("search", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+  beforeEach(() => {
+    resetSearchEnv();
   });
 
-  it("returns DuckDuckGo results when primary succeeds", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetSearchEnv();
+  });
+
+  it("returns Brave results when Brave is configured and succeeds", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      createMockJsonResponse({
+        web: {
+          results: [
+            {
+              description:
+                "GitHub is where over 100 million developers shape the future of software.",
+              title: "GitHub · Build and ship software",
+              url: "https://github.com/",
+            },
+          ],
+        },
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results).toEqual([
+      {
+        engine: "Brave",
+        snippet:
+          "GitHub is where over 100 million developers shape the future of software.",
+        title: "GitHub · Build and ship software",
+        url: "https://github.com/",
+      },
+    ]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "https://api.search.brave.com/res/v1/web/search?count=10&q=github&search_lang=en"
+      ),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Subscription-Token": "brave-key",
+        }),
+        method: "GET",
+      })
+    );
+  });
+
+  it("falls back to Exa when Brave fails", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+    process.env.EXA_API_KEY = "exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 429 }))
+      .mockResolvedValueOnce(
+        createMockJsonResponse({
+          results: [
+            {
+              highlights: ["GitHub is where people build software."],
+              title: "GitHub",
+              url: "https://github.com/",
+            },
+          ],
+        })
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results).toEqual([
+      {
+        engine: "Exa",
+        snippet: "GitHub is where people build software.",
+        title: "GitHub",
+        url: "https://github.com/",
+      },
+    ]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces API auth failures instead of silently degrading", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "bad-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 401 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(search("github")).rejects.toThrow(
+      "Brave fetch failed with status 401"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back when Brave returns 403", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 403 }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results.length).toBeGreaterThan(5);
+    expect(results[0]?.engine).toBe("DuckDuckGo");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back from Brave empty results to Exa", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+    process.env.EXA_API_KEY = "exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockJsonResponse({
+          web: {
+            results: [],
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockJsonResponse({
+          results: [
+            {
+              highlights: ["Exa fallback result."],
+              title: "Exa fallback",
+              url: "https://example.com/exa-fallback",
+            },
+          ],
+        })
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("fallback-test");
+
+    expect(results).toEqual([
+      {
+        engine: "Exa",
+        snippet: "Exa fallback result.",
+        title: "Exa fallback",
+        url: "https://example.com/exa-fallback",
+      },
+    ]);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back from Exa empty results to DuckDuckGo", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockJsonResponse({
+          results: [],
+        })
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("fallback-test");
+
+    expect(results.length).toBeGreaterThan(5);
+    expect(results[0]?.engine).toBe("DuckDuckGo");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces unexpected Brave payloads instead of masking them as no-results", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(createMockJsonResponse({ notWeb: true }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-no-results.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(search("github")).rejects.toThrow(
+      "All search engines failed: Brave, DuckDuckGo, Bing [Brave:transient; DuckDuckGo:no-results; Bing:no-results]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("surfaces unexpected Exa payloads instead of masking them as no-results", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(createMockJsonResponse({ notResults: true }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-no-results.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(search("github")).rejects.toThrow(
+      "All search engines failed: Exa, DuckDuckGo, Bing [Exa:transient; DuckDuckGo:no-results; Bing:no-results]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("falls back to DuckDuckGo scrape when API providers are unavailable", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -33,15 +264,7 @@ describe("search", () => {
     const results = await search("github");
 
     expect(results.length).toBeGreaterThan(5);
-    expect(
-      results.every(
-        (result) =>
-          result.title &&
-          result.url &&
-          result.snippet &&
-          result.engine === "DuckDuckGo"
-      )
-    ).toBe(true);
+    expect(results[0]?.engine).toBe("DuckDuckGo");
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledWith(
       "https://html.duckduckgo.com/html/",
@@ -49,43 +272,11 @@ describe("search", () => {
     );
   });
 
-  it("falls back to Google when DuckDuckGo is bot-detected", async () => {
+  it("falls back to Bing when DuckDuckGo scrape is bot-detected", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-github.html"))
-      );
-    vi.stubGlobal("fetch", mockFetch);
-
-    const results = await search("github");
-
-    expect(results).toHaveLength(2);
-    expect(results[0]).toEqual({
-      engine: "Google",
-      snippet:
-        "GitHub is where over 100 million developers shape the future of software.",
-      title: "GitHub · Build and ship software",
-      url: "https://github.com/",
-    });
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining("https://www.google.com/search?q=github&hl=en"),
-      expect.objectContaining({ method: "GET" })
-    );
-  });
-
-  it("falls back to Bing when DuckDuckGo is bot-detected and Google fails", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-challenge.html"))
       )
       .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-github.html"))
@@ -95,42 +286,40 @@ describe("search", () => {
     const results = await search("github");
 
     expect(results).toHaveLength(2);
-    expect(results[0]?.engine).toBe("Bing");
-    expect(results[0]?.title).toBe("GitHub");
-    expect(results[0]?.url).toBe("https://github.com/");
-    expect(results[0]?.snippet).toContain("software collaboration");
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      3,
-      expect.stringContaining(
-        "https://www.bing.com/search?q=github&setlang=en-US"
-      ),
-      expect.objectContaining({ method: "GET" })
-    );
+    expect(results[0]).toEqual({
+      engine: "Bing",
+      snippet:
+        "GitHub is the leading platform for software collaboration and version control.",
+      title: "GitHub",
+      url: "https://github.com/",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("uses heuristic extraction when Google selectors miss", async () => {
+  it("uses Google scrape only when explicitly enabled", async () => {
+    process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE = "true";
+
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-heuristic.html"))
+        createMockResponse(readFixture("bing-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-github.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
-    const results = await search("alpha");
+    const results = await search("github");
 
-    expect(results).toEqual([
-      {
-        engine: "Google",
-        snippet:
-          "is a detailed external result with useful descriptive text for testing heuristic extraction.",
-        title: "Example Alpha",
-        url: "https://example.com/alpha",
-      },
-    ]);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.engine).toBe("Google");
+    expect(results[0]?.title).toBe("GitHub · Build and ship software");
+    expect(results[0]?.url).toBe("https://github.com/");
+    expect(results[0]?.snippet).toContain("100 million developers");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("uses heuristic extraction when Bing selectors miss", async () => {
@@ -138,9 +327,6 @@ describe("search", () => {
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-challenge.html"))
       )
       .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-heuristic.html"))
@@ -167,9 +353,6 @@ describe("search", () => {
         createMockResponse(readFixture("duckduckgo-challenge.html"))
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-challenge.html"))
-      )
-      .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-wrapper.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
@@ -186,11 +369,45 @@ describe("search", () => {
     ]);
   });
 
-  it("normalizes Google redirect URLs in heuristic extraction", async () => {
+  it("uses heuristic extraction when Google selectors miss", async () => {
+    process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE = "true";
+
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-heuristic.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("alpha");
+
+    expect(results).toEqual([
+      {
+        engine: "Google",
+        snippet:
+          "is a detailed external result with useful descriptive text for testing heuristic extraction.",
+        title: "Example Alpha",
+        url: "https://example.com/alpha",
+      },
+    ]);
+  });
+
+  it("normalizes Google redirect URLs in heuristic extraction", async () => {
+    process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE = "true";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
       )
       .mockResolvedValueOnce(
         createMockResponse(readFixture("google-heuristic.html"))
@@ -205,39 +422,40 @@ describe("search", () => {
   });
 
   it("does not return Google support/help/feedback links from heuristic extraction", async () => {
+    process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE = "true";
+
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-support-only.html"))
+        createMockResponse(readFixture("bing-challenge.html"))
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-no-results.html"))
+        createMockResponse(readFixture("google-support-only.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("blocked-ish-query")).rejects.toThrow(
-      "All search engines failed: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:no-results; Bing:no-results]"
+      "All search engines failed: DuckDuckGo, Bing, Google [DuckDuckGo:blocked; Bing:blocked; Google:no-results]"
     );
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
-  it("throws a meaningful error when all engines fail or are bot-detected", async () => {
+  it("throws a meaningful error when all enabled engines fail or are bot-detected", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
       )
-      .mockResolvedValueOnce(new Response("", { status: 429 }))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-challenge.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("github")).rejects.toThrow(
-      "All search engines failed: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:blocked; Bing:blocked]"
+      "All search engines failed: DuckDuckGo, Bing [DuckDuckGo:blocked; Bing:blocked]"
     );
   });
 
@@ -247,26 +465,20 @@ describe("search", () => {
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
       )
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-challenge.html"))
-      );
+      .mockRejectedValueOnce(new Error("Network error"));
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(searchWithRetryAndCache("mixed-failure", 5)).rejects.toThrow(
-      "Search failed across all engines: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:transient; Bing:blocked]"
+      "Search failed across all engines: DuckDuckGo, Bing [DuckDuckGo:blocked; Bing:transient]"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("throws No Results when all engines explicitly return no-results", async () => {
+  it("throws No Results when all enabled engines explicitly return no-results", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-no-results.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-no-results.html"))
       )
       .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-no-results.html"))
@@ -274,25 +486,25 @@ describe("search", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("noresultsquery")).rejects.toThrow("No Results");
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("searchWithRetryAndCache", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetSearchEnv();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    resetSearchEnv();
   });
 
   it("retries on transient errors", async () => {
     const mockFetch = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
@@ -307,7 +519,7 @@ describe("searchWithRetryAndCache", () => {
     const results = await resultPromise;
 
     expect(results.length).toBeGreaterThan(0);
-    expect(mockFetch).toHaveBeenCalledTimes(7);
+    expect(mockFetch).toHaveBeenCalledTimes(5);
   }, 30_000);
 
   it("does NOT retry on No Results after the full fallback chain", async () => {
@@ -317,9 +529,6 @@ describe("searchWithRetryAndCache", () => {
         createMockResponse(readFixture("duckduckgo-no-results.html"))
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-no-results.html"))
-      )
-      .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-no-results.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
@@ -327,7 +536,7 @@ describe("searchWithRetryAndCache", () => {
     await expect(searchWithRetryAndCache("nothing", 5)).rejects.toThrow(
       "No Results"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("uses the fallback chain and caches the final successful result", async () => {
@@ -335,9 +544,6 @@ describe("searchWithRetryAndCache", () => {
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("google-challenge.html"))
       )
       .mockResolvedValueOnce(
         createMockResponse(readFixture("bing-github.html"))
@@ -356,6 +562,28 @@ describe("searchWithRetryAndCache", () => {
     expect(firstResults).toEqual(secondResults);
     expect(firstResults[0]?.engine).toBe("Bing");
     expect(firstResults[0]?.title).toBe("GitHub");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses Google only after Bing fails when opt-in is enabled", async () => {
+    process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE = "true";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await searchWithRetryAndCache("google-last", 5);
+
+    expect(results[0]?.engine).toBe("Google");
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
