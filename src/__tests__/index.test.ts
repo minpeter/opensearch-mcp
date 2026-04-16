@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFetchToolResult, createSearchToolResult } from "../index.ts";
+import { createFetchToolResult, createSearchToolResult } from "../tool-io.ts";
 
 describe("tool result shaping", () => {
   it("renders search results as detailed text plus structured results", () => {
@@ -45,6 +45,15 @@ describe("tool result shaping", () => {
       },
     ]);
     expect(toolResult.structuredContent).toEqual({
+      count: 1,
+      results: [
+        {
+          content: "# Example\n\nBody text",
+          length: 20,
+          title: "Example",
+          url: "https://example.com",
+        },
+      ],
       title: "Example",
       url: "https://example.com",
       length: 20,

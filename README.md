@@ -5,7 +5,7 @@ MCP server with `web_search` and `web_fetch` tools.
 ## Tools
 
 - **`web_search`** — Multi-engine web search. Uses Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing when corresponding paths are available, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
-- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. It tries Exa's hosted MCP fetch path first, then falls back to the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
+- **`web_fetch`** — Fetches one or more URLs and converts them to markdown. It accepts legacy `url` plus batch `urls`. Single fetches keep the extracted body in `content`; batch fetches return multiple text blocks with per-URL metadata and extracted content. `structuredContent.results` always returns machine-readable fetch results, with top-level metadata preserved for single-fetch compatibility. It tries Exa's hosted MCP fetch path first, then falls back to the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
 
@@ -64,11 +64,12 @@ Returns a compact text rendering of the full result set in `content` and an arra
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `url` | string | URL to fetch |
+| `url` | string | Legacy single URL to fetch |
+| `urls` | string[] | Optional batch of URLs to fetch in one call |
 
 For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first and returns that result when available. If Exa MCP is unavailable or disabled via `OPENSEARCH_ENABLE_EXA_MCP=false`, it falls back to the local fetch pipeline (Readability/PDF extraction) and then Jina for sparse content.
 
-Returns the extracted markdown body in `content` and `{ title, url, length }` in `structuredContent`.
+Single-fetch calls keep the extracted markdown body in `content` for compatibility and expose `{ title, url, length, count, results }` in `structuredContent`. Batch-fetch calls return multiple text blocks in `content` plus `{ count, results }` in `structuredContent`, where each entry in `results` is `{ title, url, content, length }`.
 
 ## Development
 
