@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { type FetchResult, fetchResultSchema } from "./fetch.ts";
+import { type FetchResult } from "./fetch.ts";
 
 const textContentType = "text" as const;
 const MAX_FETCH_URLS = 10;
@@ -47,14 +47,6 @@ export const webFetchInputSchema = z
     path: ["urls"],
   });
 
-export const webFetchOutputSchema = z.object({
-  count: z.number(),
-  results: z.array(fetchResultSchema),
-  title: z.string().optional(),
-  url: z.string().optional(),
-  length: z.number().optional(),
-});
-
 export function createSearchContent(
   query: string,
   results: SearchToolResultItem[]
@@ -75,7 +67,6 @@ export function createSearchToolResult(
     content: [
       { type: textContentType, text: createSearchContent(query, results) },
     ],
-    structuredContent: { results },
   };
 }
 
@@ -114,22 +105,14 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
     throw new Error("Fetch returned no results");
   }
 
-  const structuredContent = {
-    count: normalizedResults.length,
-    results: normalizedResults,
-    ...(normalizedResults.length === 1
-      ? {
-          title: firstResult.title,
-          url: firstResult.url,
-          length: firstResult.length,
-        }
-      : {}),
-  };
-
   if (normalizedResults.length === 1) {
     return {
-      content: [{ type: textContentType, text: firstResult.content }],
-      structuredContent,
+      content: [
+        {
+          type: textContentType,
+          text: createFetchContentBlock(firstResult, 0, normalizedResults.length),
+        },
+      ],
     };
   }
 
@@ -144,6 +127,5 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
         text: createFetchContentBlock(result, index, normalizedResults.length),
       })),
     ],
-    structuredContent,
   };
 }

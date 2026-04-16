@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
-import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
+import { searchWithRetryAndCache } from "./search.ts";
 import {
   createFetchToolResult,
   createSearchToolResult,
@@ -12,7 +12,6 @@ import {
   getSearchResultCount,
   webSearchInputSchema,
   webFetchInputSchema,
-  webFetchOutputSchema,
 } from "./tool-io.ts";
 
 const server = new McpServer({
@@ -46,10 +45,15 @@ server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
-    inputSchema: webSearchInputSchema,
-    outputSchema: z.object({
-      results: searchResultsSchema,
+      "Search the web and return a text-first result list with title, URL, snippet, and originating search engine for each hit. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
+    inputSchema: z.object({
+      query: z.string().describe("Search query string."),
+      max_results: z
+        .int()
+        .positive()
+        .max(15)
+        .default(5)
+        .describe("Maximum number of results to return. (1-15)"),
     }),
   },
   async (input) => {
@@ -69,9 +73,8 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch one or more URLs and return extracted markdown. Supports legacy `url` plus batch `urls`. Single fetches keep the raw body in `content`, while batch fetches return multiple text blocks with per-URL metadata plus extracted content. `structuredContent.results` always contains the machine-readable fetch results, with top-level title/url/length preserved for single-fetch compatibility. Uses Exa's hosted MCP fetch path first when enabled so the hosted free tier is attempted before `EXA_API_KEY` usage, then falls back to Exa's official contents API, local HTML/PDF extraction, and finally Jina AI for sparse pages.",
+      "Fetch one or more URLs and return text-first extracted markdown blocks. Supports legacy `url` plus batch `urls`. Each response block includes source metadata followed by extracted content. Uses Exa's hosted MCP fetch path first when enabled so the hosted free tier is attempted before `EXA_API_KEY` usage, then falls back to Exa's official contents API, local HTML/PDF extraction, and finally Jina AI for sparse pages.",
     inputSchema: webFetchInputSchema,
-    outputSchema: webFetchOutputSchema,
   },
   async (input) => {
     try {
