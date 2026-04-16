@@ -286,10 +286,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
         }),
       });
 
-      return parseBraveResults(response).map((result) => ({
-        ...result,
-        engine: "Brave",
-      }));
+      return attachEngine("Brave", parseBraveResults(response));
     },
   };
 }
@@ -322,19 +319,12 @@ function createExaSearchProvider(apiKey: string): SearchProvider {
         url: "https://api.exa.ai/search",
       });
 
-      return parseExaResults(response).map((result) => ({
-        ...result,
-        engine: "Exa",
-      }));
+      return attachEngine("Exa", parseExaResults(response));
     },
   };
 }
 
-export function search(query: string): Promise<SearchResult[]> {
-  return executeSearch(query);
-}
-
-async function executeSearch(query: string): Promise<SearchResult[]> {
+export async function search(query: string): Promise<SearchResult[]> {
   const failures: SearchEngineError[] = [];
   const providers = getSearchProviders();
 
@@ -404,7 +394,7 @@ async function searchWithScrapeEngine(
   }
 
   const html = await response.text();
-  return engine.parse(html).map((r) => ({ ...r, engine: engine.name }));
+  return attachEngine(engine.name, engine.parse(html));
 }
 
 async function fetchSearchApi({
@@ -914,6 +904,13 @@ function normalizeResult(result: ParsedResult): ParsedResult | null {
   return { snippet, title, url };
 }
 
+function attachEngine(
+  engine: SearchEngineName,
+  results: ParsedResult[]
+): SearchResult[] {
+  return results.map((result) => ({ ...result, engine }));
+}
+
 function dedupeResults(results: ParsedResult[]): ParsedResult[] {
   const seenUrls = new Set<string>();
 
@@ -1114,7 +1111,7 @@ export async function searchWithRetryAndCache(
   maxResults: number
 ): Promise<SearchResult[]> {
   const results = await searchCache.getOrSet(query, async () =>
-    pRetry(async () => executeSearch(query), {
+    pRetry(async () => search(query), {
       retries: 2,
       minTimeout: 2000,
       factor: 2,

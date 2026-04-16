@@ -43,16 +43,19 @@ function createMockResponse(body: string, contentType = "text/html"): Response {
   });
 }
 
-describe("fetchUrl", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+function stubHtmlFetch(html = ARTICLE_HTML) {
+  const mockFetch = vi.fn().mockResolvedValue(createMockResponse(html));
+  vi.stubGlobal("fetch", mockFetch);
+  return mockFetch;
+}
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("fetchUrl", () => {
   it("returns title and markdown content from HTML page", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(createMockResponse(ARTICLE_HTML))
-    );
+    stubHtmlFetch();
 
     const result = await fetchUrl("https://example.com/article");
 
@@ -64,10 +67,7 @@ describe("fetchUrl", () => {
   });
 
   it("content is markdown (no raw HTML tags)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(createMockResponse(ARTICLE_HTML))
-    );
+    stubHtmlFetch();
 
     const result = await fetchUrl("https://example.com/article");
 
@@ -77,10 +77,7 @@ describe("fetchUrl", () => {
   });
 
   it("strips img tags from output", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(createMockResponse(ARTICLE_HTML))
-    );
+    stubHtmlFetch();
 
     const result = await fetchUrl("https://example.com/article");
 
@@ -104,10 +101,6 @@ describe("fetchUrl", () => {
 });
 
 describe("fetchUrl - PDF", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("detects PDF by URL extension and returns text content", async () => {
     const fakeText = "This is extracted PDF text content for testing purposes.";
 
@@ -153,10 +146,6 @@ describe("fetchUrl - PDF", () => {
 });
 
 describe("fetchUrl - Jina fallback", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("uses Jina fallback when content is less than 50 chars", async () => {
     const minimalHtml = "<html><body><p>Hi</p></body></html>";
     const jinaContent =
@@ -178,6 +167,7 @@ describe("fetchUrl - Jina fallback", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(String(mockFetch.mock.calls[1]?.[0])).toMatch(JINA_URL_REGEX);
     expect(result.content).toBe(jinaContent);
+    expect(result.length).toBe(jinaContent.length);
   });
 
   it("gracefully handles Jina fallback failure", async () => {
@@ -198,6 +188,29 @@ describe("fetchUrl - Jina fallback", () => {
 
     expect(result.url).toBe("https://example.com/sparse-fail");
     expect(typeof result.content).toBe("string");
+  });
+
+  it("keeps extracted content when Jina returns a non-ok response", async () => {
+    const minimalHtml =
+      "<html><body><article><p>Hi</p></article></body></html>";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(minimalHtml, {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        })
+      )
+      .mockResolvedValueOnce(new Response("fallback error", { status: 500 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/sparse-non-ok");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toMatch(JINA_URL_REGEX);
+    expect(result.content).toContain("Hi");
+    expect(result.content).not.toContain("fallback error");
   });
 });
 
