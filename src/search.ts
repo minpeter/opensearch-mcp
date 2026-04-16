@@ -28,6 +28,16 @@ interface SearchExecutionMetadata {
   failures: SearchEngineError[];
 }
 
+class SearchExecutionError extends Error {
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "SearchExecutionError";
+    this.retryable = retryable;
+  }
+}
+
 class SearchEngineError extends Error {
   readonly engine: SearchEngineName;
   readonly kind: EngineFailureKind;
@@ -217,8 +227,9 @@ async function searchDetailed(
   }
 
   if (failures.every((failure) => failure.kind !== "no-results")) {
-    throw new Error(
-      `Search failed across all engines: ${failedEngines}${failureSummary}`
+    throw new SearchExecutionError(
+      `Search failed across all engines: ${failedEngines}${failureSummary}`,
+      failures.every((failure) => failure.kind === "transient")
     );
   }
 
@@ -592,13 +603,21 @@ function toSnippet(text: string, title: string): string {
 
 function normalizeResult(result: SearchResult): SearchResult | null {
   const title = cleanText(result.title);
+  if (!title) {
+    return null;
+  }
+
   const url = result.url.trim();
+  if (!url) {
+    return null;
+  }
+
   const snippet = truncateText(
     cleanText(result.snippet),
     MAX_HEURISTIC_SNIPPET_LENGTH
   );
 
-  if (!(title && url && snippet)) {
+  if (!snippet) {
     return null;
   }
 
@@ -743,7 +762,40 @@ function formatFailureSummary(failures: SearchEngineError[]): string {
   return ` [${details}]`;
 }
 
-const searchCache = new TtlCache<string, SearchResult[]>(3 * 60 * 1000);
+const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
+
+const searchCache = new TtlCache<string, SearchResult[]>(SEARCH_CACHE_TTL_MS);
+
+const NON_RETRYABLE_SEARCH_ERRORS = [
+  "No Results",
+  "All search engines failed",
+  "Search failed across all engines",
+] as const;
+
+function shouldRetrySearchError(error: Error): boolean {
+  const retryable = getSearchExecutionRetryable(error);
+  if (retryable !== undefined) {
+    return retryable;
+  }
+
+  return !NON_RETRYABLE_SEARCH_ERRORS.some((message) =>
+    error.message.includes(message)
+  );
+}
+
+function getSearchExecutionRetryable(error: Error): boolean | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  if (!("retryable" in error)) {
+    return undefined;
+  }
+
+  const retryable = Reflect.get(error, "retryable");
+
+  return typeof retryable === "boolean" ? retryable : undefined;
+}
 
 export async function searchWithRetryAndCache(
   query: string,
@@ -759,15 +811,7 @@ export async function searchWithRetryAndCache(
       retries: 2,
       minTimeout: 2000,
       factor: 2,
-      shouldRetry: ({ error }) => {
-        if (
-          error.message.includes("No Results") ||
-          error.message.includes("All search engines failed")
-        ) {
-          return false;
-        }
-        return true;
-      },
+      shouldRetry: ({ error }) => shouldRetrySearchError(error),
     }
   );
 

@@ -230,6 +230,24 @@ describe("search", () => {
     );
   });
 
+  it("does not retry when mixed failures produce the terminal aggregated error", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(searchWithRetryAndCache("mixed-failure", 5)).rejects.toThrow(
+      "Search failed across all engines: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:transient; Bing:blocked]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
   it("throws No Results when all engines explicitly return no-results", async () => {
     const mockFetch = vi
       .fn()

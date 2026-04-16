@@ -1,4 +1,3 @@
-// Integration tests — require network access
 import { describe, expect, it } from "vitest";
 
 import { fetchUrl } from "../fetch.ts";
@@ -9,7 +8,6 @@ const BODY_TAG_PATTERN = /<body/i;
 const DIV_TAG_PATTERN = /<div/i;
 const BLOCKED_OR_RATE_LIMIT_PATTERNS = [
   /Bot detected/i,
-  /\bblocked\b/i,
   /Too many requests/i,
   /unusual traffic/i,
 ] as const;
