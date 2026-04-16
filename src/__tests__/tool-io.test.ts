@@ -84,23 +84,28 @@ describe("getFetchUrls", () => {
 });
 
 describe("createFetchToolResult", () => {
-  it("keeps single-fetch content backward compatible while adding structured results", () => {
+  it("returns a single text-first fetch block with metadata and body", () => {
     const result = createFetchResult();
     const toolResult = createFetchToolResult(result);
 
     expect(toolResult.content).toEqual([
-      { type: "text", text: result.content },
+      {
+        type: "text",
+        text: [
+          "# Example title",
+          "URL: https://example.com/article",
+          `Length: ${result.length}`,
+          "",
+          "# Example",
+          "",
+          "Body copy",
+        ].join("\n"),
+      },
     ]);
-    expect(toolResult.structuredContent).toEqual({
-      count: 1,
-      results: [result],
-      title: result.title,
-      url: result.url,
-      length: result.length,
-    });
+    expect(toolResult).not.toHaveProperty("structuredContent");
   });
 
-  it("returns text-first blocks for multi-fetch responses", () => {
+  it("returns text-first blocks for multi-fetch responses without structured output", () => {
     const first = createFetchResult();
     const second = createFetchResult({
       title: "Second title",
@@ -121,10 +126,7 @@ describe("createFetchToolResult", () => {
       "URL: https://example.com/article"
     );
     expect(toolResult.content[2]?.text).toContain("# 2. Second title");
-    expect(toolResult.structuredContent).toEqual({
-      count: 2,
-      results: [first, second],
-    });
+    expect(toolResult).not.toHaveProperty("structuredContent");
   });
 });
 

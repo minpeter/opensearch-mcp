@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { type FetchResult } from "./fetch.ts";
+import type { FetchResult } from "./fetch.ts";
 
 const textContentType = "text" as const;
 const MAX_FETCH_URLS = 10;
@@ -110,7 +110,11 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
       content: [
         {
           type: textContentType,
-          text: createFetchContentBlock(firstResult, 0, normalizedResults.length),
+          text: createFetchContentBlock(
+            firstResult,
+            0,
+            normalizedResults.length
+          ),
         },
       ],
     };
