@@ -58,4 +58,35 @@ describe("TtlCache", () => {
     cache.set("obj", { name: "test" });
     expect(cache.get("obj")).toEqual({ name: "test" });
   });
+
+  it("deduplicates concurrent misses for the same key", async () => {
+    const cache = new TtlCache<string, string>(60_000);
+    const factory = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          setTimeout(() => resolve("value"), 10);
+        })
+    );
+
+    const firstPromise = cache.getOrSet("key", factory);
+    const secondPromise = cache.getOrSet("key", factory);
+
+    vi.advanceTimersByTime(10);
+
+    await expect(firstPromise).resolves.toBe("value");
+    await expect(secondPromise).resolves.toBe("value");
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries after a rejected factory call", async () => {
+    const cache = new TtlCache<string, string>(60_000);
+    const factory = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce("value");
+
+    await expect(cache.getOrSet("key", factory)).rejects.toThrow("boom");
+    await expect(cache.getOrSet("key", factory)).resolves.toBe("value");
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
 });

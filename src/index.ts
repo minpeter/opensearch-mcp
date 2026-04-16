@@ -3,8 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
-import { fetchUrlWithCache } from "./fetch.ts";
-import { SEARCH_ENGINE_NAMES, searchWithRetryAndCache } from "./search.ts";
+import { fetchResultSchema, fetchUrlWithCache } from "./fetch.ts";
+import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
 
 const version: string = pkg.version;
 
@@ -12,6 +12,28 @@ const server = new McpServer({
   name: "opensearch",
   version,
 });
+
+function createTextContent(text: string) {
+  return { type: "text" as const, text };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createToolErrorResponse(
+  toolName: string,
+  action: string,
+  error: unknown
+) {
+  const errorMessage = getErrorMessage(error);
+  console.error(`[opensearch] ${toolName} failed: ${errorMessage}`);
+
+  return {
+    content: [createTextContent(`${action} failed: ${errorMessage}`)],
+    isError: true,
+  };
+}
 
 server.registerTool(
   "web_search",
@@ -28,14 +50,7 @@ server.registerTool(
         .describe("Maximum number of results to return. (1-15)"),
     }),
     outputSchema: z.object({
-      results: z.array(
-        z.object({
-          engine: z.enum(SEARCH_ENGINE_NAMES),
-          title: z.string(),
-          url: z.string(),
-          snippet: z.string(),
-        })
-      ),
+      results: searchResultsSchema,
     }),
   },
   async ({ query, max_results }) => {
@@ -43,19 +58,11 @@ server.registerTool(
       const results = await searchWithRetryAndCache(query, max_results);
 
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(results) }],
+        content: [createTextContent(JSON.stringify(results))],
         structuredContent: { results },
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error(`[opensearch] web_search failed: ${errorMessage}`);
-      return {
-        content: [
-          { type: "text" as const, text: `Search failed: ${errorMessage}` },
-        ],
-        isError: true,
-      };
+      return createToolErrorResponse("web_search", "Search", error);
     }
   }
 );
@@ -68,12 +75,7 @@ server.registerTool(
     inputSchema: z.object({
       url: z.url().describe("URL to fetch and extract content from."),
     }),
-    outputSchema: z.object({
-      title: z.string(),
-      content: z.string(),
-      url: z.string(),
-      length: z.number(),
-    }),
+    outputSchema: fetchResultSchema,
   },
   async ({ url }) => {
     try {
@@ -86,19 +88,11 @@ server.registerTool(
         length: result.length,
       };
       return {
-        content: [{ type: "text" as const, text: result.content }],
+        content: [createTextContent(result.content)],
         structuredContent: structured,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error(`[opensearch] web_fetch failed: ${errorMessage}`);
-      return {
-        content: [
-          { type: "text" as const, text: `Fetch failed: ${errorMessage}` },
-        ],
-        isError: true,
-      };
+      return createToolErrorResponse("web_fetch", "Fetch", error);
     }
   }
 );
