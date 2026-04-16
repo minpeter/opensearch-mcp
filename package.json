@@ -11,6 +11,10 @@
     "websearch"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minpeter/opensearch-mcp.git"
+  },
   "type": "module",
   "bin": {
     "opensearch-mcp": "out/index.js"
