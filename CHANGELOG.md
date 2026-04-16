@@ -1,5 +1,13 @@
 # opensearch-mcp
 
+## 0.1.3
+
+### Patch Changes
+
+- 051672a: Clean up duplicated `web_fetch`/`web_search` plumbing, tighten related fetch regression coverage, and add the bounded cleanup plan document for this refactor pass.
+- 71f7092: Add official Exa hosted MCP fallback support, prefer Exa's free hosted tier before key-backed Exa APIs, and improve `web_fetch`/`web_search` ergonomics with batch fetch input, more Exa-style text-first responses, and stronger regression coverage.
+- 0924083: Harden `web_search` fallback handling with Brave and Exa API providers, opt-in Google scraping, clearer auth failure behavior, and stronger fallback regression coverage.
+
 ## 0.1.2
 
 ### Patch Changes
