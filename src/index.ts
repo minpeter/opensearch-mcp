@@ -89,7 +89,7 @@ server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa → DuckDuckGo → Bing when configured, with Google scraping available as an opt-in last resort.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z

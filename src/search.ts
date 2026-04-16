@@ -5,7 +5,13 @@ import { z } from "zod";
 import { TtlCache } from "./cache.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
-export const SEARCH_ENGINE_NAMES = ["Bing", "DuckDuckGo", "Google"] as const;
+export const SEARCH_ENGINE_NAMES = [
+  "Bing",
+  "Brave",
+  "DuckDuckGo",
+  "Exa",
+  "Google",
+] as const;
 
 type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
 
@@ -22,7 +28,11 @@ type SearchResult = z.infer<typeof searchResultSchema>;
 
 type ParsedResult = Omit<SearchResult, "engine">;
 
-type EngineFailureKind = "blocked" | "no-results" | "transient";
+type EngineFailureKind =
+  | "blocked"
+  | "misconfigured"
+  | "no-results"
+  | "transient";
 
 interface HeuristicAnchor {
   closest(selector?: string): { text(): string };
@@ -31,7 +41,12 @@ interface HeuristicAnchor {
   text(): string;
 }
 
-interface SearchEngine {
+interface SearchProvider {
+  name: SearchEngineName;
+  search(query: string): Promise<SearchResult[]>;
+}
+
+interface ScrapeSearchEngine {
   getRequestInit(query: string): {
     init: RequestInit;
     url: string;
@@ -76,6 +91,7 @@ class SearchEngineError extends Error {
 
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_HEURISTIC_SNIPPET_LENGTH = 280;
+const EXA_HIGHLIGHT_MAX_CHARACTERS = MAX_HEURISTIC_SNIPPET_LENGTH;
 const HTTP_PROTOCOL_PREFIXES: readonly ["http://", "https://"] = [
   "http://",
   "https://",
@@ -91,7 +107,9 @@ const BROWSER_HEADERS = {
 
 const SEARCH_ENGINE_HOSTS: Record<SearchEngineName, string[]> = {
   Bing: ["bing.com", "www.bing.com"],
+  Brave: ["brave.com", "search.brave.com", "api.search.brave.com"],
   DuckDuckGo: ["duckduckgo.com", "html.duckduckgo.com", "www.duckduckgo.com"],
+  Exa: ["exa.ai", "api.exa.ai"],
   Google: ["google.com", "www.google.com"],
 };
 
@@ -106,9 +124,17 @@ const SEARCH_ENGINE_INTERNAL_URL_RULES: Record<
     alwaysIgnoreHostPatterns: [/\bhelp\.bing\.microsoft\.com$/u],
     ownedHostPatterns: [/\bbing\.com$/u, /\bmicrosoft\.com$/u],
   },
+  Brave: {
+    alwaysIgnoreHostPatterns: [],
+    ownedHostPatterns: [/\bbrave\.com$/u],
+  },
   DuckDuckGo: {
     alwaysIgnoreHostPatterns: [],
     ownedHostPatterns: [/\bduckduckgo\.com$/u],
+  },
+  Exa: {
+    alwaysIgnoreHostPatterns: [],
+    ownedHostPatterns: [/\bexa\.ai$/u],
   },
   Google: {
     alwaysIgnoreHostPatterns: [
@@ -150,8 +176,11 @@ const INTERNAL_QUERY_PARAMETER_KEYS = new Set([
   "ved",
 ]);
 
-const SEARCH_ENGINES: SearchEngine[] = [
-  {
+const SCRAPE_SEARCH_ENGINES: Record<
+  "Bing" | "DuckDuckGo" | "Google",
+  ScrapeSearchEngine
+> = {
+  DuckDuckGo: {
     name: "DuckDuckGo",
     getRequestInit(query: string) {
       const formData = new FormData();
@@ -164,7 +193,7 @@ const SEARCH_ENGINES: SearchEngine[] = [
     },
     parse: parseDuckDuckGoResults,
   },
-  {
+  Google: {
     name: "Google",
     getRequestInit(query: string) {
       return {
@@ -177,7 +206,7 @@ const SEARCH_ENGINES: SearchEngine[] = [
     },
     parse: parseGoogleResults,
   },
-  {
+  Bing: {
     name: "Bing",
     getRequestInit(query: string) {
       return {
@@ -190,7 +219,116 @@ const SEARCH_ENGINES: SearchEngine[] = [
     },
     parse: parseBingResults,
   },
-];
+};
+
+const GOOGLE_SCRAPE_OPT_IN_ENV = "OPENSEARCH_ENABLE_GOOGLE_SCRAPE";
+const BRAVE_API_KEY_ENV = "BRAVE_SEARCH_API_KEY";
+const EXA_API_KEY_ENV = "EXA_API_KEY";
+
+function isGoogleScrapeEnabled(): boolean {
+  return process.env[GOOGLE_SCRAPE_OPT_IN_ENV] === "true";
+}
+
+function getSearchProviders(): SearchProvider[] {
+  const providers: SearchProvider[] = [];
+  const braveApiKey = process.env[BRAVE_API_KEY_ENV]?.trim();
+  const exaApiKey = process.env[EXA_API_KEY_ENV]?.trim();
+
+  if (braveApiKey) {
+    providers.push(createBraveSearchProvider(braveApiKey));
+  }
+
+  if (exaApiKey) {
+    providers.push(createExaSearchProvider(exaApiKey));
+  }
+
+  providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.DuckDuckGo));
+  providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.Bing));
+
+  if (isGoogleScrapeEnabled()) {
+    providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.Google));
+  }
+
+  return providers;
+}
+
+function createScrapeSearchProvider(
+  engine: ScrapeSearchEngine
+): SearchProvider {
+  return {
+    name: engine.name,
+    search(query: string): Promise<SearchResult[]> {
+      return searchWithScrapeEngine(engine, query);
+    },
+  };
+}
+
+function createBraveSearchProvider(apiKey: string): SearchProvider {
+  return {
+    name: "Brave",
+    async search(query: string): Promise<SearchResult[]> {
+      const response = await fetchSearchApi({
+        engine: "Brave",
+        init: {
+          headers: {
+            Accept: "application/json",
+            "Accept-Encoding": "gzip",
+            "User-Agent": getRandomUserAgent(),
+            "X-Subscription-Token": apiKey,
+          },
+          method: "GET",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+        url: createSearchUrl("https://api.search.brave.com/res/v1/web/search", {
+          count: "10",
+          q: query,
+          search_lang: "en",
+        }),
+      });
+
+      return parseBraveResults(response).map((result) => ({
+        ...result,
+        engine: "Brave",
+      }));
+    },
+  };
+}
+
+function createExaSearchProvider(apiKey: string): SearchProvider {
+  return {
+    name: "Exa",
+    async search(query: string): Promise<SearchResult[]> {
+      const response = await fetchSearchApi({
+        engine: "Exa",
+        init: {
+          body: JSON.stringify({
+            contents: {
+              highlights: {
+                maxCharacters: EXA_HIGHLIGHT_MAX_CHARACTERS,
+              },
+            },
+            numResults: 10,
+            query,
+            type: "auto",
+          }),
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": getRandomUserAgent(),
+            "x-api-key": apiKey,
+          },
+          method: "POST",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+        url: "https://api.exa.ai/search",
+      });
+
+      return parseExaResults(response).map((result) => ({
+        ...result,
+        engine: "Exa",
+      }));
+    },
+  };
+}
 
 export function search(query: string): Promise<SearchResult[]> {
   return executeSearch(query);
@@ -198,10 +336,11 @@ export function search(query: string): Promise<SearchResult[]> {
 
 async function executeSearch(query: string): Promise<SearchResult[]> {
   const failures: SearchEngineError[] = [];
+  const providers = getSearchProviders();
 
-  for (const engine of SEARCH_ENGINES) {
+  for (const engine of providers) {
     try {
-      return await searchWithEngine(engine, query);
+      return await engine.search(query);
     } catch (error) {
       if (error instanceof SearchEngineError) {
         failures.push(error);
@@ -239,8 +378,8 @@ async function executeSearch(query: string): Promise<SearchResult[]> {
   );
 }
 
-async function searchWithEngine(
-  engine: SearchEngine,
+async function searchWithScrapeEngine(
+  engine: ScrapeSearchEngine,
   query: string
 ): Promise<SearchResult[]> {
   const { url, init } = engine.getRequestInit(query);
@@ -266,6 +405,38 @@ async function searchWithEngine(
 
   const html = await response.text();
   return engine.parse(html).map((r) => ({ ...r, engine: engine.name }));
+}
+
+async function fetchSearchApi({
+  engine,
+  init,
+  url,
+}: {
+  engine: SearchEngineName;
+  init: RequestInit;
+  url: string;
+}): Promise<string> {
+  let response: Response;
+
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    throw new SearchEngineError(
+      engine,
+      "transient",
+      `${engine} fetch failed: ${getErrorMessage(error)}`
+    );
+  }
+
+  if (!response.ok) {
+    throw new SearchEngineError(
+      engine,
+      classifyApiStatusFailure(engine, response.status),
+      `${engine} fetch failed with status ${response.status}`
+    );
+  }
+
+  return response.text();
 }
 
 function parseDuckDuckGoResults(html: string): ParsedResult[] {
@@ -349,6 +520,130 @@ function parseBingResults(html: string): ParsedResult[] {
         };
       }),
   });
+}
+
+function parseBraveResults(responseBody: string): ParsedResult[] {
+  const parsed = parseJsonResponse(responseBody, "Brave");
+  const webResults = getRecordValue(parsed, "web");
+  if (webResults === null) {
+    throw new SearchEngineError(
+      "Brave",
+      "transient",
+      "Brave returned an unexpected response shape"
+    );
+  }
+
+  const rawResults = getArrayValue(webResults, "results");
+  const results = rawResults
+    .map((item) =>
+      normalizeResult({
+        snippet:
+          getStringValue(item, "description") ??
+          getStringValue(item, "snippet") ??
+          "",
+        title: getStringValue(item, "title") ?? "",
+        url: getStringValue(item, "url") ?? "",
+      })
+    )
+    .filter((result): result is ParsedResult => result !== null);
+
+  if (results.length === 0) {
+    throw new SearchEngineError("Brave", "no-results", "No Results");
+  }
+
+  return dedupeResults(results);
+}
+
+function parseExaResults(responseBody: string): ParsedResult[] {
+  const parsed = parseJsonResponse(responseBody, "Exa");
+  if (!Object.hasOwn(parsed, "results")) {
+    throw new SearchEngineError(
+      "Exa",
+      "transient",
+      "Exa returned an unexpected response shape"
+    );
+  }
+
+  const rawResults = getArrayValue(parsed, "results");
+  const results = rawResults
+    .map((item) => {
+      const highlights = getArrayValue(
+        typeof item === "object" && item !== null && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : null,
+        "highlights"
+      )
+        .map((highlight) =>
+          typeof highlight === "string" ? highlight.trim() : ""
+        )
+        .filter(Boolean);
+      const snippet =
+        highlights[0] ??
+        getStringValue(item, "text") ??
+        getStringValue(item, "snippet") ??
+        "";
+
+      return normalizeResult({
+        snippet,
+        title: getStringValue(item, "title") ?? "",
+        url: getStringValue(item, "url") ?? "",
+      });
+    })
+    .filter((result): result is ParsedResult => result !== null);
+
+  if (results.length === 0) {
+    throw new SearchEngineError("Exa", "no-results", "No Results");
+  }
+
+  return dedupeResults(results);
+}
+
+function parseJsonResponse(
+  responseBody: string,
+  engine: SearchEngineName
+): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(responseBody) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Expected an object response");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    throw new SearchEngineError(
+      engine,
+      "transient",
+      `${engine} returned invalid JSON: ${getErrorMessage(error)}`
+    );
+  }
+}
+
+function getArrayValue(
+  value: Record<string, unknown> | null,
+  key: string
+): unknown[] {
+  const candidate = value?.[key];
+  return Array.isArray(candidate) ? candidate : [];
+}
+
+function getRecordValue(
+  value: Record<string, unknown> | null,
+  key: string
+): Record<string, unknown> | null {
+  const candidate = value?.[key];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  return candidate as Record<string, unknown>;
+}
+
+function getStringValue(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "string" ? candidate.trim() : null;
 }
 
 function parseEngineResults(
@@ -736,6 +1031,17 @@ function classifyStatusFailure(status: number): EngineFailureKind {
   }
 
   return "transient";
+}
+
+function classifyApiStatusFailure(
+  engine: SearchEngineName,
+  status: number
+): EngineFailureKind {
+  if ((engine === "Brave" || engine === "Exa") && status === 401) {
+    return "misconfigured";
+  }
+
+  return classifyStatusFailure(status);
 }
 
 function getErrorMessage(error: unknown): string {
