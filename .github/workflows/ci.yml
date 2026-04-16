@@ -68,7 +68,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test with coverage (unit only — skip integration)
-        run: pnpm exec vitest run --coverage --exclude 'src/__tests__/integration.test.ts'
+        run: |
+          pnpm exec vitest run --coverage --coverage.reporter=text \
+            --exclude 'src/__tests__/integration.test.ts' 2>&1 | tee coverage-output.txt
 
       - name: Coverage summary
         if: always()
@@ -76,7 +78,7 @@ jobs:
           echo '## Coverage Report' >> "$GITHUB_STEP_SUMMARY"
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          pnpm exec vitest run --coverage --coverage.reporter=text --exclude 'src/__tests__/integration.test.ts' 2>&1 | grep -A 100 '% Coverage report' | head -20 >> "$GITHUB_STEP_SUMMARY"
+          grep -A 20 '% Coverage report' coverage-output.txt >> "$GITHUB_STEP_SUMMARY" || echo 'No coverage data' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   build:
