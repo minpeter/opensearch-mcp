@@ -44,7 +44,7 @@ server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing when configured, with Google scraping available as an opt-in last resort.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
@@ -74,7 +74,7 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch one or more URLs and return extracted markdown. Supports legacy `url` plus batch `urls`. Single fetches keep the raw body in `content`, while batch fetches return multiple text blocks with per-URL metadata plus extracted content. `structuredContent.results` always contains the machine-readable fetch results, with top-level title/url/length preserved for single-fetch compatibility. Uses Exa's hosted MCP fetch path first when enabled, then falls back to local HTML/PDF extraction and finally Jina AI for sparse pages.",
+      "Fetch one or more URLs and return extracted markdown. Supports legacy `url` plus batch `urls`. Single fetches keep the raw body in `content`, while batch fetches return multiple text blocks with per-URL metadata plus extracted content. `structuredContent.results` always contains the machine-readable fetch results, with top-level title/url/length preserved for single-fetch compatibility. Uses Exa's hosted MCP fetch path first when enabled so the hosted free tier is attempted before `EXA_API_KEY` usage, then falls back to Exa's official contents API, local HTML/PDF extraction, and finally Jina AI for sparse pages.",
     inputSchema: webFetchInputSchema,
     outputSchema: webFetchOutputSchema,
   },

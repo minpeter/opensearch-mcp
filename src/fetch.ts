@@ -24,8 +24,36 @@ type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 const FETCH_TIMEOUT_MS = 30_000;
 const IMG_TAG_REGEX = /<img[^>]*>/g;
 const JINA_TIMEOUT_MS = 10_000;
+const EXA_API_TIMEOUT_MS = 10_000;
+const EXA_API_KEY_ENV = "EXA_API_KEY";
+const EXA_CONTENTS_API_URL = "https://api.exa.ai/contents";
 const OPENSEARCH_ENABLE_EXA_MCP_ENV = "OPENSEARCH_ENABLE_EXA_MCP";
 const SPARSE_CONTENT_THRESHOLD = 50;
+const exaContentsResponseSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        text: z.string().optional(),
+        title: z.string().optional(),
+        url: z.string().optional(),
+      })
+    )
+    .default([]),
+  statuses: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        status: z.string(),
+        error: z
+          .object({
+            httpStatusCode: z.number().optional(),
+            tag: z.string().optional(),
+          })
+          .optional(),
+      })
+    )
+    .optional(),
+});
 
 function createFetchResult(
   url: string,
@@ -44,6 +72,54 @@ async function extractPdfContent(buffer: ArrayBuffer): Promise<string> {
   const pdf: PdfDocument = await getDocumentProxy(new Uint8Array(buffer));
   const { text } = await extractText(pdf, { mergePages: true });
   return text;
+}
+
+async function fetchExaApi(url: string): Promise<FetchResult> {
+  const apiKey = process.env[EXA_API_KEY_ENV]?.trim();
+  if (!apiKey) {
+    throw new Error("Exa API key is not configured");
+  }
+
+  const response = await fetch(EXA_CONTENTS_API_URL, {
+    body: JSON.stringify({
+      text: true,
+      urls: [url],
+    }),
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
+    method: "POST",
+    signal: AbortSignal.timeout(EXA_API_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Exa API fetch failed with status ${response.status}`);
+  }
+
+  const payload = exaContentsResponseSchema.parse(await response.json());
+  const status =
+    payload.statuses?.find((entry) => entry.id === url) ??
+    payload.statuses?.[0];
+
+  if (status?.status === "error") {
+    const errorTag = status.error?.tag ?? "unknown-error";
+    const errorCode = status.error?.httpStatusCode;
+    throw new Error(
+      errorCode
+        ? `Exa API fetch failed: ${errorTag} (${errorCode})`
+        : `Exa API fetch failed: ${errorTag}`
+    );
+  }
+
+  const result =
+    payload.results.find((entry) => entry.text?.trim()) ?? payload.results[0];
+
+  if (!result?.text?.trim()) {
+    throw new Error("Exa API fetch returned no text content");
+  }
+
+  return createFetchResult(result.url ?? url, result.text, result.title ?? "");
 }
 
 async function getFallbackContent(
@@ -74,6 +150,14 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
     try {
       const exaResult = await fetchExaMcp(url);
       return createFetchResult(url, exaResult.content, exaResult.title);
+    } catch {
+      // Fall through to the official Exa API or local fetch pipeline.
+    }
+  }
+
+  if (process.env[EXA_API_KEY_ENV]?.trim()) {
+    try {
+      return await fetchExaApi(url);
     } catch {
       // Fall through to the local fetch pipeline.
     }

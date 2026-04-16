@@ -244,10 +244,12 @@ function getSearchProviders(): SearchProvider[] {
     providers.push(createBraveSearchProvider(braveApiKey));
   }
 
+  if (isExaMcpEnabled()) {
+    providers.push(createExaMcpSearchProvider());
+  }
+
   if (exaApiKey) {
     providers.push(createExaSearchProvider(exaApiKey));
-  } else if (isExaMcpEnabled()) {
-    providers.push(createExaMcpSearchProvider());
   }
 
   providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.DuckDuckGo));

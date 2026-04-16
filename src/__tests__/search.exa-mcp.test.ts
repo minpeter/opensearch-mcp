@@ -92,8 +92,36 @@ describe("search with Exa MCP", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the raw Exa API path ahead of Exa MCP when EXA_API_KEY is configured", async () => {
+  it("keeps hosted Exa MCP ahead of the raw Exa API when EXA_API_KEY is configured", async () => {
     process.env.EXA_API_KEY = "exa-key";
+    searchExaMcp.mockResolvedValueOnce([
+      {
+        snippet: "Hosted MCP result.",
+        title: "Exa MCP",
+        url: "https://example.com/exa-mcp",
+      },
+    ]);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { search } = await import("../search.ts");
+    const results = await search("github");
+
+    expect(results).toEqual([
+      {
+        engine: "Exa",
+        snippet: "Hosted MCP result.",
+        title: "Exa MCP",
+        url: "https://example.com/exa-mcp",
+      },
+    ]);
+    expect(searchExaMcp).toHaveBeenCalledWith("github", 10);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the raw Exa API when hosted Exa MCP fails and EXA_API_KEY is configured", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+    searchExaMcp.mockRejectedValueOnce(new Error("mcp temporary failure"));
     const fetchSpy = vi.fn().mockResolvedValueOnce(
       createMockJsonResponse({
         results: [
@@ -118,7 +146,7 @@ describe("search with Exa MCP", () => {
         url: "https://example.com/exa-api",
       },
     ]);
-    expect(searchExaMcp).not.toHaveBeenCalled();
+    expect(searchExaMcp).toHaveBeenCalledWith("github", 10);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api.exa.ai/search",

@@ -4,8 +4,8 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search. Uses Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing when corresponding paths are available, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
-- **`web_fetch`** — Fetches one or more URLs and converts them to markdown. It accepts legacy `url` plus batch `urls`. Single fetches keep the extracted body in `content`; batch fetches return multiple text blocks with per-URL metadata and extracted content. `structuredContent.results` always returns machine-readable fetch results, with top-level metadata preserved for single-fetch compatibility. It tries Exa's hosted MCP fetch path first, then falls back to the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
+- **`web_search`** — Multi-engine web search. Uses Brave → Exa MCP hosted search (free tier first) → Exa Search API when `EXA_API_KEY` is configured → DuckDuckGo → Bing when corresponding paths are available, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
+- **`web_fetch`** — Fetches one or more URLs and converts them to markdown. It accepts legacy `url` plus batch `urls`. Single fetches keep the extracted body in `content`; batch fetches return multiple text blocks with per-URL metadata and extracted content. `structuredContent.results` always returns machine-readable fetch results, with top-level metadata preserved for single-fetch compatibility. It tries Exa's hosted MCP fetch path first, then Exa's official contents API when `EXA_API_KEY` is configured, then the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
 
@@ -47,27 +47,15 @@ Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `
 | Provider | Path used by this server | Credential needed here? | Notes |
 |---|---|---:|---|
 | Brave | Brave Search API | Yes | Requires `BRAVE_SEARCH_API_KEY`. |
-| Exa | Exa Search API | Yes | Used when `EXA_API_KEY` is set. |
-| Exa | Exa hosted MCP (`https://mcp.exa.ai/mcp`) | No (free hosted plan) | Used automatically when `EXA_API_KEY` is absent unless `OPENSEARCH_ENABLE_EXA_MCP=false`. |
+| Exa | Exa hosted MCP (`https://mcp.exa.ai/mcp`) | No (free hosted plan) | Tried first unless `OPENSEARCH_ENABLE_EXA_MCP=false`. |
+| Exa | Exa Search API | Yes | Used after hosted MCP when `EXA_API_KEY` is set. |
 | DuckDuckGo | HTML scraping | No | Public HTML endpoint; can still hit anti-bot challenges. |
 | Bing | HTML scraping | No | Public search page scraping with wrapper URL normalization. |
 | Google | HTML scraping (opt-in) | No | Disabled by default and used only as a last resort because it is challenge-prone. |
 
 This project intentionally aggregates only official API paths, official hosted MCP paths, or public web pages. It does not rely on reverse-engineered private endpoints or credential bypasses.
 
-As of April 16, 2026, Exa is the only official provider path we found that supports the exact "free first, add your own key later" flow used here. The comparison that led to the current fallback policy is:
-
-| Official provider path reviewed | Free without auth to start? | What the provider still requires | Why it is not the same flow as Exa hosted MCP |
-|---|---:|---|---|
-| Exa hosted MCP (`https://mcp.exa.ai/mcp`) | Yes | Nothing for the hosted free plan; `EXA_API_KEY` is optional for higher official limits | Matches this server's no-key-first, add-key-later behavior |
-| Brave Search API | No | Signup plus `BRAVE_SEARCH_API_KEY`, even though Brave includes free monthly credits | Free credits exist, but authenticated setup is still required before first use |
-| Tavily MCP / API | No | Tavily OAuth or Tavily API key, even on the free plan | Official free credits exist, but the provider still authenticates every MCP/API path |
-| Google Custom Search JSON API | No | Google API key plus Programmable Search Engine ID/config | Requires upfront auth and engine configuration, not anonymous first use |
-| Microsoft Bing grounding / custom search integrations | No | Azure resource setup plus a resource key | Requires Azure-side provisioning and billing-bound resource keys up front |
-
-That is why the remaining no-key fallbacks in this server stay limited to public-page scraping providers (DuckDuckGo/Bing/Google) rather than additional official provider integrations.
-
-The fallback chain is Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. `BRAVE_SEARCH_API_KEY` enables Brave. `EXA_API_KEY` enables the raw Exa Search API. When `EXA_API_KEY` is absent, the server uses Exa's official hosted MCP endpoint and its free plan before falling through to scrape providers. Set `OPENSEARCH_ENABLE_EXA_MCP=false` to skip the hosted Exa MCP path. If Brave or raw Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
+The fallback chain is Brave → Exa MCP hosted search → Exa Search API → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. The hosted Exa MCP path is tried first so the server can use Exa's free hosted tier before consuming a configured `EXA_API_KEY`. Set `OPENSEARCH_ENABLE_EXA_MCP=false` to skip the hosted Exa MCP path entirely. If Brave or raw Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
 
 
 Returns a compact text rendering of the full result set in `content` and an array of `{ engine, title, url, snippet }` in `structuredContent.results`, where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
@@ -79,7 +67,7 @@ Returns a compact text rendering of the full result set in `content` and an arra
 | `url` | string | Legacy single URL to fetch |
 | `urls` | string[] | Optional batch of URLs to fetch in one call |
 
-For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first and returns that result when available. If Exa MCP is unavailable or disabled via `OPENSEARCH_ENABLE_EXA_MCP=false`, it falls back to the local fetch pipeline (Readability/PDF extraction) and then Jina for sparse content. The outward-facing MCP response stays normalized across those paths, and `structuredContent.url` continues to echo the requested URL.
+For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first so it can use the hosted free tier. If that is unavailable and `EXA_API_KEY` is configured, it falls back to Exa's official `POST /contents` API before using the local Readability/PDF pipeline and Jina for sparse content.
 
 Single-fetch calls keep the extracted markdown body in `content` for compatibility and expose `{ title, url, length, count, results }` in `structuredContent`. Batch-fetch calls return multiple text blocks in `content` plus `{ count, results }` in `structuredContent`, where each entry in `results` is `{ title, url, content, length }`.
 

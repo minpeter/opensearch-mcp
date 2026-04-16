@@ -63,6 +63,7 @@ afterEach(() => {
 
 beforeEach(() => {
   process.env.OPENSEARCH_ENABLE_EXA_MCP = "true";
+  delete process.env.EXA_API_KEY;
   fetchExaMcp.mockReset();
   fetchExaMcp.mockRejectedValue(new Error("Exa MCP unavailable"));
 });
@@ -99,6 +100,92 @@ describe("fetchUrl", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.title).toBeTruthy();
     expect(result.content).toBeTruthy();
+  });
+
+  it("falls back to the official Exa contents API when Exa MCP fails and EXA_API_KEY is set", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+    fetchExaMcp.mockRejectedValueOnce(new Error("Exa timeout"));
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              text: "# Exa API body",
+              title: "Exa API title",
+              url: "https://example.com/article",
+            },
+          ],
+          statuses: [
+            {
+              id: "https://example.com/article",
+              status: "success",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(fetchExaMcp).toHaveBeenCalledWith("https://example.com/article");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.exa.ai/contents",
+      expect.objectContaining({
+        body: JSON.stringify({
+          text: true,
+          urls: ["https://example.com/article"],
+        }),
+        headers: expect.objectContaining({ "x-api-key": "exa-key" }),
+        method: "POST",
+      })
+    );
+    expect(result).toEqual({
+      content: "# Exa API body",
+      title: "Exa API title",
+      url: "https://example.com/article",
+      length: "# Exa API body".length,
+    });
+  });
+
+  it("uses the official Exa contents API when hosted Exa MCP is disabled but EXA_API_KEY is set", async () => {
+    process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
+    process.env.EXA_API_KEY = "exa-key";
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              text: "# Exa API only body",
+              title: "Exa API only title",
+              url: "https://example.com/article",
+            },
+          ],
+          statuses: [
+            {
+              id: "https://example.com/article",
+              status: "success",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(fetchExaMcp).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.title).toBe("Exa API only title");
+    expect(result.content).toBe("# Exa API only body");
   });
 
   it("skips Exa MCP entirely when OPENSEARCH_ENABLE_EXA_MCP is false", async () => {

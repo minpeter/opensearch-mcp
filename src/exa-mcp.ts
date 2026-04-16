@@ -12,7 +12,6 @@ import {
 
 const EXA_MCP_TIMEOUT_MS = 8000;
 const EXA_MCP_FETCH_MAX_CHARACTERS = 12_000;
-const EXA_API_KEY_ENV = "EXA_API_KEY";
 
 export interface ExaMcpSearchResult {
   snippet: string;
@@ -87,7 +86,6 @@ async function withExaMcpClient<T>(
     new URL(createExaMcpServerUrl(undefined, enabledTools)),
     {
       requestInit: {
-        headers: getExaMcpHeaders(),
         signal: AbortSignal.timeout(EXA_MCP_TIMEOUT_MS),
       },
     }
@@ -117,15 +115,4 @@ function getExaMcpErrorText(content: unknown): string {
     : "";
 
   return text || "Exa MCP search failed";
-}
-
-function getExaMcpHeaders(): HeadersInit | undefined {
-  const apiKey = process.env[EXA_API_KEY_ENV]?.trim();
-  if (!apiKey) {
-    return undefined;
-  }
-
-  return {
-    "x-api-key": apiKey,
-  };
 }
