@@ -16,22 +16,17 @@ export interface SearchToolResultItem {
   url: string;
 }
 
-export const webSearchInputSchema = z
-  .object({
-    query: z.string().describe("Search query string."),
-    numResults: searchResultCountSchema
-      .optional()
-      .describe(
-        "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
-      ),
-    max_results: searchResultCountSchema
-      .optional()
-      .describe("Legacy alias for numResults. Defaults to 5. (1-15)"),
-  })
-  .transform(({ max_results, numResults, query }) => ({
-    query,
-    ...normalizeSearchResultCount(numResults, max_results),
-  }));
+export const webSearchInputSchema = z.object({
+  query: z.string().describe("Search query string."),
+  numResults: searchResultCountSchema
+    .optional()
+    .describe(
+      "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
+    ),
+  max_results: searchResultCountSchema
+    .optional()
+    .describe("Legacy alias for numResults. Defaults to 5. (1-15)"),
+});
 
 export const webFetchInputSchema = z
   .object({
@@ -85,7 +80,7 @@ export function createSearchToolResult(
 export function getSearchResultCount(
   input: z.infer<typeof webSearchInputSchema>
 ): number {
-  return input.numResults ?? DEFAULT_SEARCH_RESULT_COUNT;
+  return input.numResults ?? input.max_results ?? DEFAULT_SEARCH_RESULT_COUNT;
 }
 
 export function getFetchUrls(
@@ -102,21 +97,6 @@ export function getFetchMaxCharacters(
   input: z.infer<typeof webFetchInputSchema>
 ): number | undefined {
   return input.maxCharacters;
-}
-
-function normalizeSearchResultCount(
-  numResults: number | undefined,
-  legacyMaxResults: number | undefined
-): { numResults?: number } {
-  if (numResults !== undefined) {
-    return { numResults };
-  }
-
-  if (legacyMaxResults !== undefined) {
-    return { numResults: legacyMaxResults };
-  }
-
-  return {};
 }
 
 function createFetchContentBlock(result: FetchResult): string {
