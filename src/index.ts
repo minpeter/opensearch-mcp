@@ -8,7 +8,6 @@ import {
   createFetchToolResult,
   createSearchToolResult,
   getFetchMaxCharacters,
-  getFetchUrls,
   getSearchResultCount,
   webFetchInputSchema,
   webSearchInputSchema,
@@ -44,8 +43,14 @@ function createToolErrorResponse(
 server.registerTool(
   "web_search",
   {
-    description:
-      "Search the web and return a text-first result list with title, URL, snippet, and originating search engine for each hit. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
+    description: `Search the web for any topic and get clean, ready-to-use content.
+
+Best for: Finding current information, news, facts, people, companies, or answering questions about any topic.
+Returns: Clean text content from top search results.
+
+Query tips:
+describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
+If highlights are insufficient, follow up with web_fetch on the best URLs.`,
     inputSchema: webSearchInputSchema,
   },
   async (input) => {
@@ -63,14 +68,16 @@ server.registerTool(
 server.registerTool(
   "web_fetch",
   {
-    description:
-      "Fetch one or more URLs and return text-first extracted markdown blocks. Supports legacy `url` plus batch `urls`. Each response block includes source metadata followed by extracted content. Uses Exa's hosted MCP fetch path first when enabled so the hosted free tier is attempted before `EXA_API_KEY` usage, then falls back to Exa's official contents API, local HTML/PDF extraction, and finally Jina AI for sparse pages.",
+    description: `Read a webpage's full content as clean markdown. Use after web_search when highlights are insufficient or to read any URL.
+
+Best for: Extracting full content from known URLs. Batch multiple URLs in one call.
+Returns: Clean text content and metadata from the page(s).`,
     inputSchema: webFetchInputSchema,
   },
   async (input) => {
     try {
       const results = await fetchUrlsWithCache(
-        getFetchUrls(input),
+        input.urls,
         getFetchMaxCharacters(input)
       );
       return createFetchToolResult(results);

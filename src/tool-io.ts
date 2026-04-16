@@ -17,38 +17,35 @@ export interface SearchToolResultItem {
 }
 
 export const webSearchInputSchema = z.object({
-  query: z.string().describe("Search query string."),
+  query: z
+    .string()
+    .describe(
+      "Natural language search query. Describe the ideal page, not just keywords."
+    ),
   numResults: searchResultCountSchema
     .optional()
-    .describe(
-      "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
-    ),
+    .describe("Number of search results to return (default: 5, range: 1-15)."),
   max_results: searchResultCountSchema
     .optional()
-    .describe("Legacy alias for numResults. Defaults to 5. (1-15)"),
+    .describe(
+      "Legacy alias for numResults. Number of search results to return (default: 5, range: 1-15)."
+    ),
 });
 
-export const webFetchInputSchema = z
-  .object({
-    urls: z
-      .array(z.url())
-      .min(1)
-      .max(MAX_FETCH_URLS)
-      .optional()
-      .describe("Preferred batch of URLs to fetch and extract in one call."),
-    url: z.url().optional().describe("Legacy single URL alias for urls."),
-    maxCharacters: z
-      .int()
-      .positive()
-      .optional()
-      .describe(
-        "Preferred maximum extracted text length per URL for hosted Exa MCP and official Exa contents fetches. Defaults to 12000."
-      ),
-  })
-  .refine(({ url, urls }) => Boolean(url || urls?.length), {
-    message: "Provide urls or url.",
-    path: ["urls"],
-  });
+export const webFetchInputSchema = z.object({
+  urls: z
+    .array(z.url())
+    .min(1)
+    .max(MAX_FETCH_URLS)
+    .describe("URLs to read. Batch multiple URLs in one call."),
+  maxCharacters: z
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Maximum characters to extract per page (must be a positive number, default: 12000)."
+    ),
+});
 
 export function createSearchContent(
   query: string,
@@ -81,16 +78,6 @@ export function getSearchResultCount(
   input: z.infer<typeof webSearchInputSchema>
 ): number {
   return input.numResults ?? input.max_results ?? DEFAULT_SEARCH_RESULT_COUNT;
-}
-
-export function getFetchUrls(
-  input: z.infer<typeof webFetchInputSchema>
-): string[] {
-  const merged = [...(input.urls ?? []), input.url].filter(
-    (value): value is string => Boolean(value)
-  );
-
-  return [...new Set(merged)];
 }
 
 export function getFetchMaxCharacters(

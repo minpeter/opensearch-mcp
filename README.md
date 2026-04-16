@@ -5,7 +5,7 @@ Zero-config web search and fetch MCP with free-tier-first routing across officia
 ## Tools
 
 - **`web_search`** — Multi-engine web search. Uses Brave → Exa MCP hosted search (free tier first) → Exa Search API when `EXA_API_KEY` is configured → DuckDuckGo → Bing when corresponding paths are available, with Google scraping available as an opt-in last resort. Responses are text-first and render the full result set in `content`.
-- **`web_fetch`** — Fetches one or more URLs and converts them to markdown. It accepts legacy `url` plus batch `urls`. Responses are text-first: each `content` block includes source metadata followed by extracted markdown. It tries Exa's hosted MCP fetch path first, then Exa's official contents API when `EXA_API_KEY` is configured, then the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
+- **`web_fetch`** — Fetches one or more URLs and converts them to markdown. It accepts Exa-style `urls`. Responses are text-first: each `content` block includes source metadata followed by extracted markdown. It tries Exa's hosted MCP fetch path first, then Exa's official contents API when `EXA_API_KEY` is configured, then the local HTML/PDF pipeline and finally [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
 
@@ -65,8 +65,7 @@ Returns a compact text rendering of the full result set in `content`, with each 
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `url` | string | Legacy single URL to fetch |
-| `urls` | string[] | Optional batch of URLs to fetch in one call |
+| `urls` | string[] | URLs to fetch in one call |
 
 For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first so it can use the hosted free tier. If that is unavailable and `EXA_API_KEY` is configured, it falls back to Exa's official `POST /contents` API before using the local Readability/PDF pipeline and Jina for sparse content.
 
