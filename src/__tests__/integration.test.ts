@@ -1,4 +1,3 @@
-// Integration tests — require network access
 import { describe, expect, it } from "vitest";
 
 import { fetchUrl } from "../fetch.ts";
@@ -7,6 +6,21 @@ import { search } from "../search.ts";
 const HTML_TAG_PATTERN = /<html/i;
 const BODY_TAG_PATTERN = /<body/i;
 const DIV_TAG_PATTERN = /<div/i;
+const BLOCKED_OR_RATE_LIMIT_PATTERNS = [
+  /Bot detected/i,
+  /Too many requests/i,
+  /unusual traffic/i,
+] as const;
+
+const isBlockedOrRateLimitedError = (error: unknown): error is Error => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return BLOCKED_OR_RATE_LIMIT_PATTERNS.some((pattern) =>
+    pattern.test(error.message)
+  );
+};
 
 describe("integration: web_search (real network)", () => {
   it('search("typescript programming language") returns results with all fields', {
@@ -16,8 +30,10 @@ describe("integration: web_search (real network)", () => {
     try {
       results = await search("typescript programming language");
     } catch (err) {
-      if (err instanceof Error && err.message.includes("Bot detected")) {
-        console.warn("DuckDuckGo rate-limited — skipping assertion");
+      if (isBlockedOrRateLimitedError(err)) {
+        console.warn(
+          "Search engines rate-limited or blocked — skipping assertion"
+        );
         return;
       }
       throw err;

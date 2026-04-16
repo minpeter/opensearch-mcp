@@ -3,74 +3,271 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const BOT_DETECTION_REGEX = /Too many requests|Bot detected/;
-const STATUS_429_REGEX = /429/;
-
 import { search, searchWithRetryAndCache } from "../search.ts";
 
-function createMockResponse(html: string): Response {
+const fixturesDir = join(import.meta.dirname, "fixtures");
+
+function createMockResponse(html: string, status = 200): Response {
   return new Response(html, {
-    status: 200,
+    status,
     headers: { "Content-Type": "text/html" },
   });
 }
 
-const fixturesDir = join(import.meta.dirname, "fixtures");
+function readFixture(name: string): string {
+  return readFileSync(join(fixturesDir, name), "utf-8");
+}
 
 describe("search", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns results from real DuckDuckGo HTML fixture", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-github.html"),
-      "utf-8"
-    );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createMockResponse(html)));
+  it("returns DuckDuckGo results when primary succeeds", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
 
     const results = await search("github");
 
     expect(results.length).toBeGreaterThan(5);
-    expect(results.every((r) => r.title && r.url && r.snippet)).toBe(true);
-    expect(results[0]?.title).toBeTruthy();
-    expect(results[0]?.url).toBeTruthy();
-    expect(results[0]?.snippet).toBeTruthy();
+    expect(
+      results.every((result) => result.title && result.url && result.snippet)
+    ).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://html.duckduckgo.com/html/",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 
-  it('throws "No Results" error for no-results fixture', async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-no-results.html"),
-      "utf-8"
+  it("falls back to Google when DuckDuckGo is bot-detected", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual({
+      snippet:
+        "GitHub is where over 100 million developers shape the future of software.",
+      title: "GitHub · Build and ship software",
+      url: "https://github.com/",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("https://www.google.com/search?q=github&hl=en"),
+      expect.objectContaining({ method: "GET" })
     );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createMockResponse(html)));
+  });
+
+  it("falls back to Bing when DuckDuckGo is bot-detected and Google fails", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.title).toBe("GitHub");
+    expect(results[0]?.url).toBe("https://github.com/");
+    expect(results[0]?.snippet).toContain("software collaboration");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(
+        "https://www.bing.com/search?q=github&setlang=en-US"
+      ),
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("uses heuristic extraction when Google selectors miss", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-heuristic.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("alpha");
+
+    expect(results).toEqual([
+      {
+        snippet:
+          "is a detailed external result with useful descriptive text for testing heuristic extraction.",
+        title: "Example Alpha",
+        url: "https://example.com/alpha",
+      },
+    ]);
+  });
+
+  it("uses heuristic extraction when Bing selectors miss", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-heuristic.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("beta");
+
+    expect(results).toEqual([
+      {
+        snippet:
+          "includes enough nearby body text to become a cleaned snippet even when standard selectors are absent.",
+        title: "Example Beta",
+        url: "https://example.org/beta",
+      },
+    ]);
+  });
+
+  it("normalizes Bing wrapper URLs to final targets", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-wrapper.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("wrapped-result");
+
+    expect(results).toEqual([
+      {
+        snippet: "Bing wrapper URLs should decode to final usable targets.",
+        title: "Example Wrapped Result",
+        url: "https://example.net/path?x=1",
+      },
+    ]);
+  });
+
+  it("normalizes Google redirect URLs in heuristic extraction", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-heuristic.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("alpha-normalized");
+
+    expect(results[0]?.url).toBe("https://example.com/alpha");
+    expect(results).toHaveLength(1);
+  });
+
+  it("does not return Google support/help/feedback links from heuristic extraction", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-support-only.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-no-results.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(search("blocked-ish-query")).rejects.toThrow(
+      "All search engines failed: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:no-results; Bing:no-results]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws a meaningful error when all engines fail or are bot-detected", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(new Response("", { status: 429 }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(search("github")).rejects.toThrow(
+      "All search engines failed: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:blocked; Bing:blocked]"
+    );
+  });
+
+  it("does not retry when mixed failures produce the terminal aggregated error", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(searchWithRetryAndCache("mixed-failure", 5)).rejects.toThrow(
+      "Search failed across all engines: DuckDuckGo, Google, Bing [DuckDuckGo:blocked; Google:transient; Bing:blocked]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws No Results when all engines explicitly return no-results", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-no-results.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("noresultsquery")).rejects.toThrow("No Results");
-  });
-
-  it("throws bot detection error for challenge-form fixture", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-challenge.html"),
-      "utf-8"
-    );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createMockResponse(html)));
-
-    await expect(search("test")).rejects.toThrow(BOT_DETECTION_REGEX);
-  });
-
-  it("throws on non-ok response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("", { status: 429 }))
-    );
-
-    await expect(search("test")).rejects.toThrow(STATUS_429_REGEX);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });
 
 describe("searchWithRetryAndCache", () => {
-  const fixturesDir = join(import.meta.dirname, "fixtures");
-
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -81,19 +278,16 @@ describe("searchWithRetryAndCache", () => {
   });
 
   it("retries on transient errors", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-github.html"),
-      "utf-8"
-    );
     const mockFetch = vi
       .fn()
       .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce(
-        new Response(html, {
-          status: 200,
-          headers: { "Content-Type": "text/html" },
-        })
+        createMockResponse(readFixture("duckduckgo-github.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
@@ -102,60 +296,65 @@ describe("searchWithRetryAndCache", () => {
     const results = await resultPromise;
 
     expect(results.length).toBeGreaterThan(0);
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(7);
   }, 30_000);
 
-  it('does NOT retry on "No Results" error', async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-no-results.html"),
-      "utf-8"
-    );
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html" },
-      })
-    );
+  it("does NOT retry on No Results after the full fallback chain", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-no-results.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-no-results.html"))
+      );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(searchWithRetryAndCache("nothing", 5)).rejects.toThrow(
       "No Results"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
-  it("returns cached result on second call", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-github.html"),
-      "utf-8"
-    );
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html" },
-      })
-    );
+  it("uses the fallback chain and caches the final successful result", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("google-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-github.html"))
+      );
     vi.stubGlobal("fetch", mockFetch);
 
-    await searchWithRetryAndCache("github-cached", 10);
-    await searchWithRetryAndCache("github-cached", 10);
+    const firstResults = await searchWithRetryAndCache(
+      "github-cached-fallback",
+      10
+    );
+    const secondResults = await searchWithRetryAndCache(
+      "github-cached-fallback",
+      10
+    );
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(firstResults).toEqual(secondResults);
+    expect(firstResults[0]?.title).toBe("GitHub");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("re-fetches after TTL expiry", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-github.html"),
-      "utf-8"
-    );
-    const mockFetch = vi.fn().mockImplementation(() =>
-      Promise.resolve(
-        new Response(html, {
-          status: 200,
-          headers: { "Content-Type": "text/html" },
-        })
-      )
-    );
+    const mockFetch = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          createMockResponse(readFixture("duckduckgo-github.html"))
+        )
+      );
     vi.stubGlobal("fetch", mockFetch);
 
     await searchWithRetryAndCache("github-ttl", 10);
@@ -166,19 +365,14 @@ describe("searchWithRetryAndCache", () => {
   });
 
   it("slices results to max_results", async () => {
-    const html = readFileSync(
-      join(fixturesDir, "duckduckgo-github.html"),
-      "utf-8"
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(html, {
-          status: 200,
-          headers: { "Content-Type": "text/html" },
-        })
-      )
-    );
+    const mockFetch = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          createMockResponse(readFixture("duckduckgo-github.html"))
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
 
     const results = await searchWithRetryAndCache("github-slice", 3);
     expect(results.length).toBeLessThanOrEqual(3);
