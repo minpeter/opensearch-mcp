@@ -4,6 +4,13 @@ import { type FetchResult, fetchResultSchema } from "./fetch.ts";
 
 const textContentType = "text" as const;
 const MAX_FETCH_URLS = 10;
+const DEFAULT_SEARCH_RESULT_COUNT = 5;
+const MAX_SEARCH_RESULTS = 15;
+
+const searchResultCountSchema = z
+  .int()
+  .positive()
+  .max(MAX_SEARCH_RESULTS);
 
 export interface SearchToolResultItem {
   engine: string;
@@ -12,21 +19,32 @@ export interface SearchToolResultItem {
   url: string;
 }
 
+export const webSearchInputSchema = z.object({
+  query: z.string().describe("Search query string."),
+  numResults: searchResultCountSchema.optional().describe(
+    "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
+  ),
+  max_results: searchResultCountSchema.optional().describe(
+    "Legacy alias for numResults. Defaults to 5. (1-15)"
+  ),
+});
+
 export const webFetchInputSchema = z
   .object({
-    url: z.url().optional().describe("URL to fetch and extract content from."),
     urls: z
       .array(z.url())
       .min(1)
       .max(MAX_FETCH_URLS)
       .optional()
-      .describe(
-        "Optional batch of URLs to fetch and extract. Use when you want one call to fetch multiple pages."
-      ),
+      .describe("Preferred batch of URLs to fetch and extract in one call."),
+    url: z
+      .url()
+      .optional()
+      .describe("Legacy single URL alias for urls."),
   })
   .refine(({ url, urls }) => Boolean(url || urls?.length), {
-    message: "Provide url or urls.",
-    path: ["url"],
+    message: "Provide urls or url.",
+    path: ["urls"],
   });
 
 export const webFetchOutputSchema = z.object({
@@ -61,10 +79,16 @@ export function createSearchToolResult(
   };
 }
 
+export function getSearchResultCount(
+  input: z.infer<typeof webSearchInputSchema>
+): number {
+  return input.numResults ?? input.max_results ?? DEFAULT_SEARCH_RESULT_COUNT;
+}
+
 export function getFetchUrls(
   input: z.infer<typeof webFetchInputSchema>
 ): string[] {
-  const merged = [input.url, ...(input.urls ?? [])].filter(
+  const merged = [...(input.urls ?? []), input.url].filter(
     (value): value is string => Boolean(value)
   );
 
