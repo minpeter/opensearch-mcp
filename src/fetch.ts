@@ -16,7 +16,7 @@ export const fetchResultSchema = z.object({
   length: z.number(),
 });
 
-type FetchResult = z.infer<typeof fetchResultSchema>;
+export type FetchResult = z.infer<typeof fetchResultSchema>;
 
 type ReadabilityArticle = NonNullable<ReturnType<Readability["parse"]>>;
 type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;

@@ -5,6 +5,13 @@ import { z } from "zod";
 import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
 import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
+import {
+  createFetchToolResult,
+  createSearchToolResult,
+  getFetchUrls,
+  webFetchInputSchema,
+  webFetchOutputSchema,
+} from "./tool-io.ts";
 
 const server = new McpServer({
   name: "opensearch",
@@ -12,13 +19,6 @@ const server = new McpServer({
 });
 
 const textContentType = "text" as const;
-interface SearchToolResultItem {
-  engine: string;
-  snippet: string;
-  title: string;
-  url: string;
-}
-type FetchToolResultPayload = Awaited<ReturnType<typeof fetchUrlWithCache>>;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -37,41 +37,6 @@ function createToolErrorResponse(
       { type: textContentType, text: `${action} failed: ${errorMessage}` },
     ],
     isError: true,
-  };
-}
-
-export function createSearchContent(
-  query: string,
-  results: SearchToolResultItem[]
-): string {
-  const lines = results.map(
-    (result, index) =>
-      `${index + 1}. [${result.engine}] ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}`
-  );
-
-  return `Returned ${results.length} search results for "${query}".\n\n${lines.join("\n\n")}`;
-}
-
-export function createSearchToolResult(
-  query: string,
-  results: SearchToolResultItem[]
-) {
-  return {
-    content: [
-      { type: textContentType, text: createSearchContent(query, results) },
-    ],
-    structuredContent: { results },
-  };
-}
-
-export function createFetchToolResult(result: FetchToolResultPayload) {
-  return {
-    content: [{ type: textContentType, text: result.content }],
-    structuredContent: {
-      title: result.title,
-      url: result.url,
-      length: result.length,
-    },
   };
 }
 
@@ -109,19 +74,16 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Uses Exa's hosted MCP fetch path first when enabled, then falls back to local HTML/PDF extraction and finally Jina AI for sparse pages.",
-    inputSchema: z.object({
-      url: z.url().describe("URL to fetch and extract content from."),
-    }),
-    outputSchema: z.object({
-      title: z.string(),
-      url: z.string(),
-      length: z.number(),
-    }),
+      "Fetch one or more URLs and return extracted markdown. Supports legacy `url` plus batch `urls`. Single fetches keep the raw body in `content`, while batch fetches return multiple text blocks with per-URL metadata plus extracted content. `structuredContent.results` always contains the machine-readable fetch results, with top-level title/url/length preserved for single-fetch compatibility. Uses Exa's hosted MCP fetch path first when enabled, then falls back to local HTML/PDF extraction and finally Jina AI for sparse pages.",
+    inputSchema: webFetchInputSchema,
+    outputSchema: webFetchOutputSchema,
   },
-  async ({ url }) => {
+  async (input) => {
     try {
-      return createFetchToolResult(await fetchUrlWithCache(url));
+      const results = await Promise.all(
+        getFetchUrls(input).map((url) => fetchUrlWithCache(url))
+      );
+      return createFetchToolResult(results);
     } catch (error) {
       return createToolErrorResponse("web_fetch", "Fetch", error);
     }
