@@ -1,7 +1,4 @@
 import { Readability } from "@mozilla/readability";
-
-const IMG_TAG_REGEX = /<img[^>]*>/g;
-
 import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
@@ -23,12 +20,22 @@ type FetchResult = z.infer<typeof fetchResultSchema>;
 type ReadabilityArticle = NonNullable<ReturnType<Readability["parse"]>>;
 type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 
-function getArticleContent(article: ReadabilityArticle | null): string {
-  return article?.content ?? "";
-}
+const FETCH_TIMEOUT_MS = 30_000;
+const IMG_TAG_REGEX = /<img[^>]*>/g;
+const JINA_TIMEOUT_MS = 10_000;
+const SPARSE_CONTENT_THRESHOLD = 50;
 
-function getArticleTitle(article: ReadabilityArticle | null): string {
-  return article?.title ?? "";
+function createFetchResult(
+  url: string,
+  content: string,
+  title = ""
+): FetchResult {
+  return {
+    title,
+    content,
+    url,
+    length: content.length,
+  };
 }
 
 async function extractPdfContent(buffer: ArrayBuffer): Promise<string> {
@@ -37,31 +44,48 @@ async function extractPdfContent(buffer: ArrayBuffer): Promise<string> {
   return text;
 }
 
+async function getFallbackContent(
+  url: string,
+  content: string
+): Promise<string> {
+  if (content.length >= SPARSE_CONTENT_THRESHOLD) {
+    return content;
+  }
+
+  try {
+    const response = await fetch(`https://r.jina.ai/${url}`, {
+      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
+    });
+
+    if (response.ok) {
+      return await response.text();
+    }
+  } catch {
+    // Keep the original content when Jina fails.
+  }
+
+  return content;
+}
+
 export async function fetchUrl(url: string): Promise<FetchResult> {
-  const res = await fetch(url, {
+  const response = await fetch(url, {
     headers: { "User-Agent": getRandomUserAgent() },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!res.ok) {
-    throw new Error(`Fetch failed with status ${res.status}`);
+  if (!response.ok) {
+    throw new Error(`Fetch failed with status ${response.status}`);
   }
 
-  const contentType = res.headers.get("Content-Type") ?? "";
+  const contentType = response.headers.get("Content-Type") ?? "";
   if (url.endsWith(".pdf") || contentType.includes("application/pdf")) {
-    const extractedText = await extractPdfContent(await res.arrayBuffer());
-    return {
-      title: "",
-      content: extractedText,
-      url,
-      length: extractedText.length,
-    };
+    const extractedText = await extractPdfContent(await response.arrayBuffer());
+    return createFetchResult(url, extractedText);
   }
 
-  const rawHtml = await res.text();
-  const html = rawHtml.replace(IMG_TAG_REGEX, "");
+  const htmlWithoutImages = (await response.text()).replace(IMG_TAG_REGEX, "");
 
-  const doc = new JSDOM(html, { url });
+  const doc = new JSDOM(htmlWithoutImages, { url });
   const article: ReadabilityArticle | null = new Readability(
     doc.window.document
   ).parse();
@@ -78,27 +102,12 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
     replacement: () => "",
   });
 
-  let content = turndown.turndown(getArticleContent(article));
-
-  if (content.length < 50) {
-    try {
-      const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (jinaRes.ok) {
-        content = await jinaRes.text();
-      }
-    } catch {
-      // Keep the original content when Jina fails.
-    }
-  }
-
-  return {
-    title: getArticleTitle(article),
-    content,
+  const content = await getFallbackContent(
     url,
-    length: content.length,
-  };
+    turndown.turndown(article?.content ?? "")
+  );
+
+  return createFetchResult(url, content, article?.title ?? "");
 }
 
 const fetchCache = new TtlCache<string, FetchResult>(3 * 60 * 1000);

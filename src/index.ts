@@ -6,14 +6,19 @@ import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
 import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
 
-const version: string = pkg.version;
-
 const server = new McpServer({
   name: "opensearch",
-  version,
+  version: pkg.version,
 });
 
 const textContentType = "text" as const;
+interface SearchToolResultItem {
+  engine: string;
+  snippet: string;
+  title: string;
+  url: string;
+}
+type FetchToolResultPayload = Awaited<ReturnType<typeof fetchUrlWithCache>>;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -37,12 +42,7 @@ function createToolErrorResponse(
 
 export function createSearchContent(
   query: string,
-  results: Array<{
-    engine: string;
-    snippet: string;
-    title: string;
-    url: string;
-  }>
+  results: SearchToolResultItem[]
 ): string {
   const lines = results.map(
     (result, index) =>
@@ -54,12 +54,7 @@ export function createSearchContent(
 
 export function createSearchToolResult(
   query: string,
-  results: Array<{
-    engine: string;
-    snippet: string;
-    title: string;
-    url: string;
-  }>
+  results: SearchToolResultItem[]
 ) {
   return {
     content: [
@@ -69,12 +64,7 @@ export function createSearchToolResult(
   };
 }
 
-export function createFetchToolResult(result: {
-  content: string;
-  length: number;
-  title: string;
-  url: string;
-}) {
+export function createFetchToolResult(result: FetchToolResultPayload) {
   return {
     content: [{ type: textContentType, text: result.content }],
     structuredContent: {
