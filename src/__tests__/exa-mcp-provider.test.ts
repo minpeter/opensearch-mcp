@@ -4,6 +4,8 @@ import {
   createExaMcpServerUrl,
   DEFAULT_EXA_MCP_SERVER_URL,
   parseExaMcpContentItems,
+  parseExaMcpFetchContentItem,
+  parseExaMcpFetchText,
   parseExaMcpSearchToolText,
 } from "../exa-mcp-provider.ts";
 
@@ -25,6 +27,52 @@ describe("createExaMcpServerUrl", () => {
     const url = new URL(createExaMcpServerUrl(DEFAULT_EXA_MCP_SERVER_URL, []));
 
     expect(url.searchParams.has("tools")).toBe(false);
+  });
+});
+
+describe("parseExaMcpFetchText", () => {
+  it("extracts title, url, and markdown body from web_fetch_exa text", () => {
+    const result =
+      parseExaMcpFetchText(`# GitHub · Change is constant. GitHub keeps you ahead. · GitHub
+URL: https://github.com/
+Published: 2025-05-30
+
+GitHub · Change is constant. GitHub keeps you ahead. · GitHub
+
+## The future of building happens together`);
+
+    expect(result).toEqual({
+      content: `GitHub · Change is constant. GitHub keeps you ahead. · GitHub
+
+## The future of building happens together`,
+      title: "GitHub · Change is constant. GitHub keeps you ahead. · GitHub",
+      url: "https://github.com/",
+    });
+  });
+
+  it("returns null for malformed web_fetch_exa text", () => {
+    expect(parseExaMcpFetchText("missing metadata")).toBeNull();
+  });
+});
+
+describe("parseExaMcpFetchContentItem", () => {
+  it("reads the first text content item for web_fetch_exa", () => {
+    const result = parseExaMcpFetchContentItem([
+      { type: "resource", text: "ignore me" },
+      {
+        type: "text",
+        text: `# Example
+URL: https://example.com/page
+
+Body text.`,
+      },
+    ]);
+
+    expect(result).toEqual({
+      content: "Body text.",
+      title: "Example",
+      url: "https://example.com/page",
+    });
   });
 });
 

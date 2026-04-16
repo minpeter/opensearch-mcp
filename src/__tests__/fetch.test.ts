@@ -12,6 +12,14 @@ vi.mock("unpdf", () => ({
   extractText: vi.fn(),
 }));
 
+const { fetchExaMcp } = vi.hoisted(() => ({
+  fetchExaMcp: vi.fn(),
+}));
+
+vi.mock("../exa-mcp.ts", () => ({
+  fetchExaMcp,
+}));
+
 import { extractText, getDocumentProxy } from "unpdf";
 
 import { fetchUrl, fetchUrlWithCache } from "../fetch.ts";
@@ -53,7 +61,56 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+beforeEach(() => {
+  process.env.OPENSEARCH_ENABLE_EXA_MCP = "true";
+  fetchExaMcp.mockReset();
+  fetchExaMcp.mockRejectedValue(new Error("Exa MCP unavailable"));
+});
+
 describe("fetchUrl", () => {
+  it("returns Exa MCP content first when available", async () => {
+    fetchExaMcp.mockResolvedValueOnce({
+      content: "# Exa markdown body",
+      title: "Exa title",
+      url: "https://example.com/article",
+    });
+    const mockFetch = vi.fn();
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(result).toEqual({
+      content: "# Exa markdown body",
+      title: "Exa title",
+      url: "https://example.com/article",
+      length: "# Exa markdown body".length,
+    });
+    expect(fetchExaMcp).toHaveBeenCalledWith("https://example.com/article");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the local fetch pipeline when Exa MCP fails", async () => {
+    fetchExaMcp.mockRejectedValueOnce(new Error("Exa timeout"));
+    const mockFetch = stubHtmlFetch();
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(fetchExaMcp).toHaveBeenCalledWith("https://example.com/article");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.title).toBeTruthy();
+    expect(result.content).toBeTruthy();
+  });
+
+  it("skips Exa MCP entirely when OPENSEARCH_ENABLE_EXA_MCP is false", async () => {
+    process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
+    const mockFetch = stubHtmlFetch();
+
+    await fetchUrl("https://example.com/article");
+
+    expect(fetchExaMcp).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("returns title and markdown content from HTML page", async () => {
     stubHtmlFetch();
 

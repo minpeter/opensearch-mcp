@@ -109,7 +109,7 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
+      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Uses Exa's hosted MCP fetch path first when enabled, then falls back to local HTML/PDF extraction and finally Jina AI for sparse pages.",
     inputSchema: z.object({
       url: z.url().describe("URL to fetch and extract content from."),
     }),

@@ -6,6 +6,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
+import { fetchExaMcp } from "./exa-mcp.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const fetchResultSchema = z.object({
@@ -23,6 +24,7 @@ type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 const FETCH_TIMEOUT_MS = 30_000;
 const IMG_TAG_REGEX = /<img[^>]*>/g;
 const JINA_TIMEOUT_MS = 10_000;
+const OPENSEARCH_ENABLE_EXA_MCP_ENV = "OPENSEARCH_ENABLE_EXA_MCP";
 const SPARSE_CONTENT_THRESHOLD = 50;
 
 function createFetchResult(
@@ -68,6 +70,15 @@ async function getFallbackContent(
 }
 
 export async function fetchUrl(url: string): Promise<FetchResult> {
+  if (isExaMcpEnabled()) {
+    try {
+      const exaResult = await fetchExaMcp(url);
+      return createFetchResult(url, exaResult.content, exaResult.title);
+    } catch {
+      // Fall through to the local fetch pipeline.
+    }
+  }
+
   const response = await fetch(url, {
     headers: { "User-Agent": getRandomUserAgent() },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -114,4 +125,8 @@ const fetchCache = new TtlCache<string, FetchResult>(3 * 60 * 1000);
 
 export function fetchUrlWithCache(url: string): Promise<FetchResult> {
   return fetchCache.getOrSet(url, () => fetchUrl(url));
+}
+
+function isExaMcpEnabled(): boolean {
+  return process.env[OPENSEARCH_ENABLE_EXA_MCP_ENV] !== "false";
 }
