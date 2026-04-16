@@ -44,7 +44,7 @@ interface HeuristicAnchor {
 
 interface SearchProvider {
   name: SearchEngineName;
-  search(query: string): Promise<SearchResult[]>;
+  search(query: string, numResults: number): Promise<SearchResult[]>;
 }
 
 interface ScrapeSearchEngine {
@@ -265,9 +265,9 @@ function getSearchProviders(): SearchProvider[] {
 function createExaMcpSearchProvider(): SearchProvider {
   return {
     name: "Exa",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       try {
-        const results = await searchExaMcp(query, 10);
+        const results = await searchExaMcp(query, numResults);
 
         if (results.length === 0) {
           throw new SearchEngineError("Exa", "no-results", "No Results");
@@ -303,7 +303,7 @@ function createScrapeSearchProvider(
 function createBraveSearchProvider(apiKey: string): SearchProvider {
   return {
     name: "Brave",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       const response = await fetchSearchApi({
         engine: "Brave",
         init: {
@@ -317,7 +317,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         },
         url: createSearchUrl("https://api.search.brave.com/res/v1/web/search", {
-          count: "10",
+          count: String(numResults),
           q: query,
           search_lang: "en",
         }),
@@ -331,7 +331,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
 function createExaSearchProvider(apiKey: string): SearchProvider {
   return {
     name: "Exa",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       const response = await fetchSearchApi({
         engine: "Exa",
         init: {
@@ -341,7 +341,7 @@ function createExaSearchProvider(apiKey: string): SearchProvider {
                 maxCharacters: EXA_HIGHLIGHT_MAX_CHARACTERS,
               },
             },
-            numResults: 10,
+            numResults,
             query,
             type: "auto",
           }),
@@ -361,13 +361,16 @@ function createExaSearchProvider(apiKey: string): SearchProvider {
   };
 }
 
-export async function search(query: string): Promise<SearchResult[]> {
+export async function search(
+  query: string,
+  numResults = 10
+): Promise<SearchResult[]> {
   const failures: SearchEngineError[] = [];
   const providers = getSearchProviders();
 
   for (const engine of providers) {
     try {
-      return await engine.search(query);
+      return await engine.search(query, numResults);
     } catch (error) {
       if (error instanceof SearchEngineError) {
         failures.push(error);
@@ -1169,7 +1172,7 @@ export async function searchWithRetryAndCache(
   maxResults: number
 ): Promise<SearchResult[]> {
   const results = await searchCache.getOrSet(query, async () =>
-    pRetry(async () => search(query), {
+    pRetry(async () => search(query, maxResults), {
       retries: 2,
       minTimeout: 2000,
       factor: 2,

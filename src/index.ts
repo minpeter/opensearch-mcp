@@ -52,10 +52,7 @@ server.registerTool(
     try {
       return createSearchToolResult(
         input.query,
-        await searchWithRetryAndCache(
-          input.query,
-          getSearchResultCount(input)
-        )
+        await searchWithRetryAndCache(input.query, getSearchResultCount(input))
       );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
