@@ -67,8 +67,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test (unit only — skip integration)
-        run: pnpm exec vitest run --exclude 'src/__tests__/integration.test.ts'
+      - name: Test with coverage (unit only — skip integration)
+        run: pnpm exec vitest run --coverage --exclude 'src/__tests__/integration.test.ts'
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo '## Coverage Report' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          pnpm exec vitest run --coverage --coverage.reporter=text --exclude 'src/__tests__/integration.test.ts' 2>&1 | grep -A 100 '% Coverage report' | head -20 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build
