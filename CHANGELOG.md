@@ -1,5 +1,12 @@
 # opensearch-mcp
 
+## 0.1.4
+
+### Patch Changes
+
+- 6bad596: Preserve the `web_search` tool input schema in bundled releases so MCP clients receive the expected `query`, `numResults`, and `max_results` fields from `tools/list`.
+- ab3abc5: Refresh the package and README description to consistently present the project as a zero-config, free-tier-first MCP for web search and fetch across official providers.
+
 ## 0.1.3
 
 ### Patch Changes
