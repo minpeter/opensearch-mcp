@@ -25,4 +25,15 @@ export class TtlCache<K, V> {
   has(key: K): boolean {
     return this.get(key) !== undefined;
   }
+
+  async getOrSet(key: K, factory: () => Promise<V>): Promise<V> {
+    const cachedValue = this.get(key);
+    if (cachedValue !== undefined) {
+      return cachedValue;
+    }
+
+    const value = await factory();
+    this.set(key, value);
+    return value;
+  }
 }

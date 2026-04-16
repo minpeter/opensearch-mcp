@@ -6,15 +6,35 @@ import { JSDOM } from "jsdom";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { extractText, getDocumentProxy } from "unpdf";
+import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
-export interface FetchResult {
-  content: string;
-  length: number;
-  title: string;
-  url: string;
+export const fetchResultSchema = z.object({
+  title: z.string(),
+  content: z.string(),
+  url: z.string(),
+  length: z.number(),
+});
+
+type FetchResult = z.infer<typeof fetchResultSchema>;
+
+type ReadabilityArticle = NonNullable<ReturnType<Readability["parse"]>>;
+type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
+
+function getArticleContent(article: ReadabilityArticle | null): string {
+  return article?.content ?? "";
+}
+
+function getArticleTitle(article: ReadabilityArticle | null): string {
+  return article?.title ?? "";
+}
+
+async function extractPdfContent(buffer: ArrayBuffer): Promise<string> {
+  const pdf: PdfDocument = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return text;
 }
 
 export async function fetchUrl(url: string): Promise<FetchResult> {
@@ -29,10 +49,7 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
 
   const contentType = res.headers.get("Content-Type") ?? "";
   if (url.endsWith(".pdf") || contentType.includes("application/pdf")) {
-    const buffer = await res.arrayBuffer();
-    const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractText(pdf, { mergePages: true });
-    const extractedText = text ?? "";
+    const extractedText = await extractPdfContent(await res.arrayBuffer());
     return {
       title: "",
       content: extractedText,
@@ -45,7 +62,9 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
   const html = rawHtml.replace(IMG_TAG_REGEX, "");
 
   const doc = new JSDOM(html, { url });
-  const article = new Readability(doc.window.document).parse();
+  const article: ReadabilityArticle | null = new Readability(
+    doc.window.document
+  ).parse();
 
   const turndown = new TurndownService({
     headingStyle: "atx",
@@ -59,7 +78,7 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
     replacement: () => "",
   });
 
-  let content = turndown.turndown(article?.content ?? "");
+  let content = turndown.turndown(getArticleContent(article));
 
   if (content.length < 50) {
     try {
@@ -70,12 +89,12 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
         content = await jinaRes.text();
       }
     } catch {
-      // Graceful degradation — keep the short content
+      // Keep the original content when Jina fails.
     }
   }
 
   return {
-    title: article?.title ?? "",
+    title: getArticleTitle(article),
     content,
     url,
     length: content.length,
@@ -84,15 +103,6 @@ export async function fetchUrl(url: string): Promise<FetchResult> {
 
 const fetchCache = new TtlCache<string, FetchResult>(3 * 60 * 1000);
 
-export async function fetchUrlWithCache(url: string): Promise<FetchResult> {
-  if (fetchCache.has(url)) {
-    const cached = fetchCache.get(url);
-    if (cached) {
-      return cached;
-    }
-  }
-
-  const result = await fetchUrl(url);
-  fetchCache.set(url, result);
-  return result;
+export function fetchUrlWithCache(url: string): Promise<FetchResult> {
+  return fetchCache.getOrSet(url, () => fetchUrl(url));
 }

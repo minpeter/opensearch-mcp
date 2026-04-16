@@ -16,6 +16,12 @@ import { extractText, getDocumentProxy } from "unpdf";
 
 import { fetchUrl, fetchUrlWithCache } from "../fetch.ts";
 
+type MockPdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
+
+function createMockPdfDocument(): MockPdfDocument {
+  return Object.create(null) as MockPdfDocument;
+}
+
 const ARTICLE_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head><title>Test Article</title></head>
@@ -115,7 +121,7 @@ describe("fetchUrl - PDF", () => {
       )
     );
 
-    vi.mocked(getDocumentProxy).mockResolvedValue({} as never);
+    vi.mocked(getDocumentProxy).mockResolvedValue(createMockPdfDocument());
     vi.mocked(extractText).mockResolvedValue({ text: fakeText, totalPages: 1 });
 
     const result = await fetchUrl("https://example.com/document.pdf");
@@ -137,7 +143,7 @@ describe("fetchUrl - PDF", () => {
       )
     );
 
-    vi.mocked(getDocumentProxy).mockResolvedValue({} as never);
+    vi.mocked(getDocumentProxy).mockResolvedValue(createMockPdfDocument());
     vi.mocked(extractText).mockResolvedValue({ text: fakeText, totalPages: 1 });
 
     const result = await fetchUrl("https://example.com/download/file");

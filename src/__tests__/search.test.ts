@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { search, searchWithRetryAndCache } from "../search.ts";
 
 const fixturesDir = join(import.meta.dirname, "fixtures");
-
 function createMockResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,

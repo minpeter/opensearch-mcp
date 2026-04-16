@@ -1,26 +1,35 @@
-import { load } from "cheerio";
+import { type CheerioAPI, load } from "cheerio";
 import pRetry from "p-retry";
+import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const SEARCH_ENGINE_NAMES = ["Bing", "DuckDuckGo", "Google"] as const;
 
-export type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
+type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
 
-export interface SearchResult {
-  engine: SearchEngineName;
-  snippet: string;
-  title: string;
-  url: string;
-}
+export const searchResultSchema = z.object({
+  engine: z.enum(SEARCH_ENGINE_NAMES),
+  title: z.string(),
+  url: z.string(),
+  snippet: z.string(),
+});
 
-/** Internal shape returned by parse functions before the engine name is stamped. */
+export const searchResultsSchema = z.array(searchResultSchema);
+
+type SearchResult = z.infer<typeof searchResultSchema>;
+
 type ParsedResult = Omit<SearchResult, "engine">;
 
 type EngineFailureKind = "blocked" | "no-results" | "transient";
 
-type CheerioSelection = ReturnType<ReturnType<typeof load>>;
+interface HeuristicAnchor {
+  closest(selector?: string): { text(): string };
+  parent(): { text(): string; parent(): { text(): string } };
+  siblings(selector?: string): { text(): string };
+  text(): string;
+}
 
 interface SearchEngine {
   getRequestInit(query: string): {
@@ -31,8 +40,12 @@ interface SearchEngine {
   parse(html: string): ParsedResult[];
 }
 
-interface SearchExecutionMetadata {
-  failures: SearchEngineError[];
+interface SearchParserConfig {
+  blockedMessage: string;
+  detectBlocked?: ($: CheerioAPI, pageText: string) => boolean;
+  detectNoResults?: ($: CheerioAPI, pageText: string) => boolean;
+  engine: SearchEngineName;
+  extractResults: ($: CheerioAPI) => ParsedResult[];
 }
 
 class SearchExecutionError extends Error {
@@ -63,6 +76,10 @@ class SearchEngineError extends Error {
 
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_HEURISTIC_SNIPPET_LENGTH = 280;
+const HTTP_PROTOCOL_PREFIXES: readonly ["http://", "https://"] = [
+  "http://",
+  "https://",
+];
 const BROWSER_HEADERS = {
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -78,31 +95,36 @@ const SEARCH_ENGINE_HOSTS: Record<SearchEngineName, string[]> = {
   Google: ["google.com", "www.google.com"],
 };
 
-const SEARCH_ENGINE_INTERNAL_HOST_PATTERNS: Record<SearchEngineName, RegExp[]> =
+const SEARCH_ENGINE_INTERNAL_URL_RULES: Record<
+  SearchEngineName,
   {
-    Bing: [/\bbing\.com$/u, /\bmicrosoft\.com$/u],
-    DuckDuckGo: [/\bduckduckgo\.com$/u],
-    Google: [
+    alwaysIgnoreHostPatterns: RegExp[];
+    ownedHostPatterns: RegExp[];
+  }
+> = {
+  Bing: {
+    alwaysIgnoreHostPatterns: [/\bhelp\.bing\.microsoft\.com$/u],
+    ownedHostPatterns: [/\bbing\.com$/u, /\bmicrosoft\.com$/u],
+  },
+  DuckDuckGo: {
+    alwaysIgnoreHostPatterns: [],
+    ownedHostPatterns: [/\bduckduckgo\.com$/u],
+  },
+  Google: {
+    alwaysIgnoreHostPatterns: [
+      /\bsupport\.google\.com$/u,
+      /\baccounts\.google\.com$/u,
+      /\bmyaccount\.google\.com$/u,
+      /\bpolicies\.google\.com$/u,
+    ],
+    ownedHostPatterns: [
       /\bgoogle\.com$/u,
       /\bsupport\.google\.com$/u,
       /\baccounts\.google\.com$/u,
       /\bmyaccount\.google\.com$/u,
       /\bpolicies\.google\.com$/u,
     ],
-  };
-
-const SEARCH_ENGINE_INTERNAL_ONLY_HOST_PATTERNS: Record<
-  SearchEngineName,
-  RegExp[]
-> = {
-  Bing: [/\bhelp\.bing\.microsoft\.com$/u],
-  DuckDuckGo: [],
-  Google: [
-    /\bsupport\.google\.com$/u,
-    /\baccounts\.google\.com$/u,
-    /\bmyaccount\.google\.com$/u,
-    /\bpolicies\.google\.com$/u,
-  ],
+  },
 };
 
 const INTERNAL_PATH_SEGMENT_PATTERNS = [
@@ -137,15 +159,7 @@ const SEARCH_ENGINES: SearchEngine[] = [
 
       return {
         url: "https://html.duckduckgo.com/html/",
-        init: {
-          method: "POST",
-          headers: {
-            ...BROWSER_HEADERS,
-            "User-Agent": getRandomUserAgent(),
-          },
-          body: formData,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        },
+        init: createSearchRequestInit("POST", formData),
       };
     },
     parse: parseDuckDuckGoResults,
@@ -153,20 +167,12 @@ const SEARCH_ENGINES: SearchEngine[] = [
   {
     name: "Google",
     getRequestInit(query: string) {
-      const url = new URL("https://www.google.com/search");
-      url.searchParams.set("q", query);
-      url.searchParams.set("hl", "en");
-
       return {
-        url: url.toString(),
-        init: {
-          method: "GET",
-          headers: {
-            ...BROWSER_HEADERS,
-            "User-Agent": getRandomUserAgent(),
-          },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        },
+        url: createSearchUrl("https://www.google.com/search", {
+          q: query,
+          hl: "en",
+        }),
+        init: createSearchRequestInit("GET"),
       };
     },
     parse: parseGoogleResults,
@@ -174,42 +180,28 @@ const SEARCH_ENGINES: SearchEngine[] = [
   {
     name: "Bing",
     getRequestInit(query: string) {
-      const url = new URL("https://www.bing.com/search");
-      url.searchParams.set("q", query);
-      url.searchParams.set("setlang", "en-US");
-
       return {
-        url: url.toString(),
-        init: {
-          method: "GET",
-          headers: {
-            ...BROWSER_HEADERS,
-            "User-Agent": getRandomUserAgent(),
-          },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        },
+        url: createSearchUrl("https://www.bing.com/search", {
+          q: query,
+          setlang: "en-US",
+        }),
+        init: createSearchRequestInit("GET"),
       };
     },
     parse: parseBingResults,
   },
 ];
 
-export async function search(query: string): Promise<SearchResult[]> {
-  return (await searchDetailed(query)).results;
+export function search(query: string): Promise<SearchResult[]> {
+  return executeSearch(query);
 }
 
-async function searchDetailed(
-  query: string
-): Promise<{ metadata: SearchExecutionMetadata; results: SearchResult[] }> {
+async function executeSearch(query: string): Promise<SearchResult[]> {
   const failures: SearchEngineError[] = [];
 
   for (const engine of SEARCH_ENGINES) {
     try {
-      const results = await searchWithEngine(engine, query);
-      return {
-        metadata: { failures },
-        results,
-      };
+      return await searchWithEngine(engine, query);
     } catch (error) {
       if (error instanceof SearchEngineError) {
         failures.push(error);
@@ -221,15 +213,16 @@ async function searchDetailed(
   }
 
   if (failures.every((failure) => failure.kind === "no-results")) {
-    throw new Error("No Results");
+    throw new SearchExecutionError("No Results", false);
   }
 
   const failedEngines = failures.map((failure) => failure.engine).join(", ");
   const failureSummary = formatFailureSummary(failures);
 
   if (failures.every((failure) => failure.kind === "blocked")) {
-    throw new Error(
-      `All search engines failed: ${failedEngines}${failureSummary}`
+    throw new SearchExecutionError(
+      `All search engines failed: ${failedEngines}${failureSummary}`,
+      false
     );
   }
 
@@ -240,8 +233,9 @@ async function searchDetailed(
     );
   }
 
-  throw new Error(
-    `All search engines failed: ${failedEngines}${failureSummary}`
+  throw new SearchExecutionError(
+    `All search engines failed: ${failedEngines}${failureSummary}`,
+    false
   );
 }
 
@@ -275,119 +269,116 @@ async function searchWithEngine(
 }
 
 function parseDuckDuckGoResults(html: string): ParsedResult[] {
-  const $ = load(html);
+  return parseEngineResults(html, {
+    blockedMessage: "Too many requests (Bot detected)",
+    detectBlocked: ($) => $(".challenge-form, #challenge-form").length > 0,
+    detectNoResults: ($) => $(".no-results").length > 0,
+    engine: "DuckDuckGo",
+    extractResults: ($) =>
+      collectResults(
+        $,
+        ".zci, #links > .result, .result.results_links, .result.results_links_deep",
+        ($result) => {
+          const anchor = $result(
+            ".zci__heading > a, .result__title .result__a, .result__a"
+          ).first();
 
-  if ($(".no-results").length > 0) {
-    throw new SearchEngineError("DuckDuckGo", "no-results", "No Results");
-  }
-
-  if ($(".challenge-form, #challenge-form").length > 0) {
-    throw new SearchEngineError(
-      "DuckDuckGo",
-      "blocked",
-      "Too many requests (Bot detected)"
-    );
-  }
-
-  const results = collectResults(
-    $,
-    ".zci, #links > .result, .result.results_links, .result.results_links_deep",
-    ($result) => ({
-      snippet: $result(".zci__result, .result__snippet").first().text().trim(),
-      title: $result(".zci__heading > a, .result__title .result__a, .result__a")
-        .first()
-        .text()
-        .trim(),
-      url:
-        $result(".zci__heading > a, .result__title .result__a, .result__a")
-          .first()
-          .attr("href")
-          ?.trim() ?? "",
-    })
-  );
-
-  return ensureResults(results, $, "DuckDuckGo");
+          return {
+            snippet: $result(".zci__result, .result__snippet")
+              .first()
+              .text()
+              .trim(),
+            title: anchor.text().trim(),
+            url: anchor.attr("href")?.trim() ?? "",
+          };
+        }
+      ),
+  });
 }
 
 function parseGoogleResults(html: string): ParsedResult[] {
-  const $ = load(html);
-  const pageText = $.text();
+  return parseEngineResults(html, {
+    blockedMessage: "Google blocked the request",
+    detectBlocked: ($, pageText) =>
+      pageText.includes("Our systems have detected unusual traffic") ||
+      pageText.includes("To continue, please type the characters below") ||
+      $("#captcha-form, form#challenge-form, #recaptcha").length > 0,
+    detectNoResults: (_, pageText) =>
+      pageText.includes("did not match any documents") ||
+      pageText.includes("did not match any results") ||
+      pageText.includes("No results found for"),
+    engine: "Google",
+    extractResults: ($) =>
+      collectResults($, "div.g, div[data-snc]", ($result) => {
+        const anchor = $result("a[href]").has("h3").first();
 
-  if (pageText.includes("did not match any documents")) {
-    throw new SearchEngineError("Google", "no-results", "No Results");
-  }
-
-  if (
-    pageText.includes("did not match any results") ||
-    pageText.includes("No results found for")
-  ) {
-    throw new SearchEngineError("Google", "no-results", "No Results");
-  }
-
-  if (
-    pageText.includes("Our systems have detected unusual traffic") ||
-    pageText.includes("To continue, please type the characters below") ||
-    $("#captcha-form, form#challenge-form, #recaptcha").length > 0
-  ) {
-    throw new SearchEngineError(
-      "Google",
-      "blocked",
-      "Google blocked the request"
-    );
-  }
-
-  const results = collectResults($, "div.g, div[data-snc]", ($result) => {
-    const anchor = $result("a[href]").has("h3").first();
-    const href = normalizeGoogleUrl(anchor.attr("href") ?? "");
-
-    return {
-      snippet: $result(".VwiC3b, .yXK7lf, .MUxGbd, .s3v9rd")
-        .first()
-        .text()
-        .trim(),
-      title: anchor.find("h3").first().text().trim(),
-      url: href,
-    };
+        return {
+          snippet: $result(".VwiC3b, .yXK7lf, .MUxGbd, .s3v9rd")
+            .first()
+            .text()
+            .trim(),
+          title: anchor.find("h3").first().text().trim(),
+          url: normalizeGoogleUrl(anchor.attr("href") ?? ""),
+        };
+      }),
   });
-
-  return ensureResults(results, $, "Google");
 }
 
 function parseBingResults(html: string): ParsedResult[] {
+  return parseEngineResults(html, {
+    blockedMessage: "Bing blocked the request",
+    detectBlocked: (_, pageText) =>
+      pageText.includes("One last step") ||
+      pageText.includes("Enter the characters you see below") ||
+      pageText.includes("Please solve this puzzle") ||
+      pageText.includes("verify you are a human"),
+    detectNoResults: ($, pageText) =>
+      pageText.includes("There are no results for") ||
+      pageText.includes("No results found for") ||
+      pageText.includes("There are no results for this question") ||
+      $(".b_no").length > 0,
+    engine: "Bing",
+    extractResults: ($) =>
+      collectResults($, "li.b_algo", ($result) => {
+        const anchor = $result("h2 a").first();
+
+        return {
+          snippet: $result(".b_caption p, .b_snippet").first().text().trim(),
+          title: anchor.text().trim(),
+          url: normalizeBingUrl(anchor.attr("href")?.trim() ?? ""),
+        };
+      }),
+  });
+}
+
+function parseEngineResults(
+  html: string,
+  {
+    blockedMessage,
+    detectBlocked,
+    detectNoResults,
+    engine,
+    extractResults,
+  }: SearchParserConfig
+): ParsedResult[] {
   const $ = load(html);
   const pageText = $.text();
 
-  if (
-    pageText.includes("There are no results for") ||
-    pageText.includes("No results found for") ||
-    pageText.includes("There are no results for this question") ||
-    $(".b_no").length > 0
-  ) {
-    throw new SearchEngineError("Bing", "no-results", "No Results");
+  if (detectNoResults?.($, pageText)) {
+    throw new SearchEngineError(engine, "no-results", "No Results");
   }
 
-  if (
-    pageText.includes("One last step") ||
-    pageText.includes("Enter the characters you see below") ||
-    pageText.includes("Please solve this puzzle") ||
-    pageText.includes("verify you are a human")
-  ) {
-    throw new SearchEngineError("Bing", "blocked", "Bing blocked the request");
+  if (detectBlocked?.($, pageText)) {
+    throw new SearchEngineError(engine, "blocked", blockedMessage);
   }
 
-  const results = collectResults($, "li.b_algo", ($result) => ({
-    snippet: $result(".b_caption p, .b_snippet").first().text().trim(),
-    title: $result("h2 a").first().text().trim(),
-    url: normalizeBingUrl($result("h2 a").first().attr("href")?.trim() ?? ""),
-  }));
-
-  return ensureResults(results, $, "Bing");
+  return ensureResults(extractResults($), $, engine);
 }
 
 function collectResults(
-  $: ReturnType<typeof load>,
+  $: CheerioAPI,
   selector: string,
-  getResult: (result: ReturnType<typeof load>) => ParsedResult
+  getResult: (result: CheerioAPI) => ParsedResult
 ): ParsedResult[] {
   const results: ParsedResult[] = [];
 
@@ -412,7 +403,7 @@ function collectResults(
 
 function ensureResults(
   selectorResults: ParsedResult[],
-  $: ReturnType<typeof load>,
+  $: CheerioAPI,
   engine: SearchEngineName
 ): ParsedResult[] {
   if (selectorResults.length > 0) {
@@ -434,14 +425,14 @@ function normalizeGoogleUrl(url: string): string {
     return parsed.searchParams.get("q")?.trim() ?? "";
   }
 
-  if (url.startsWith("http://") || url.startsWith("https://")) {
+  if (hasHttpProtocol(url)) {
     return url.trim();
   }
 
   return "";
 }
 
-function normalizeEngineUrl(engine: SearchEngineName, url: string): string {
+function normalizeHeuristicUrl(engine: SearchEngineName, url: string): string {
   const trimmedUrl = url.trim();
 
   if (!trimmedUrl || trimmedUrl.startsWith("#")) {
@@ -456,23 +447,24 @@ function normalizeEngineUrl(engine: SearchEngineName, url: string): string {
     return "";
   }
 
-  if (engine === "Google") {
-    return normalizeGoogleUrl(trimmedUrl);
+  switch (engine) {
+    case "Google": {
+      return normalizeGoogleUrl(trimmedUrl);
+    }
+    case "Bing": {
+      return normalizeBingUrl(trimmedUrl);
+    }
+    case "DuckDuckGo": {
+      return hasHttpProtocol(trimmedUrl) ? trimmedUrl : "";
+    }
+    default: {
+      return "";
+    }
   }
-
-  if (engine === "Bing") {
-    return normalizeBingUrl(trimmedUrl);
-  }
-
-  if (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://")) {
-    return trimmedUrl;
-  }
-
-  return "";
 }
 
 function normalizeBingUrl(url: string): string {
-  if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+  if (!hasHttpProtocol(url)) {
     return "";
   }
 
@@ -503,10 +495,7 @@ function normalizeBingUrl(url: string): string {
 }
 
 function decodeBingWrappedUrl(encodedTarget: string): string {
-  if (
-    encodedTarget.startsWith("http://") ||
-    encodedTarget.startsWith("https://")
-  ) {
+  if (hasHttpProtocol(encodedTarget)) {
     return encodedTarget;
   }
 
@@ -534,22 +523,21 @@ function tryDecodeBingBase64Target(encodedTarget: string): string {
   const base64 = normalizedTarget.replace(/-/g, "+").replace(/_/g, "/");
   const paddedBase64 = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
 
-  try {
-    return Buffer.from(paddedBase64, "base64").toString("utf8").trim();
-  } catch {
-    return "";
-  }
+  return Buffer.from(paddedBase64, "base64").toString("utf8").trim();
 }
 
 function extractHeuristicResults(
-  $: ReturnType<typeof load>,
+  $: CheerioAPI,
   engine: SearchEngineName
 ): ParsedResult[] {
   const results: ParsedResult[] = [];
 
   $("a[href]").each((_, element) => {
     const anchor = $(element);
-    const normalizedUrl = normalizeEngineUrl(engine, anchor.attr("href") ?? "");
+    const normalizedUrl = normalizeHeuristicUrl(
+      engine,
+      anchor.attr("href") ?? ""
+    );
 
     if (!normalizedUrl || isIgnoredSearchEngineUrl(normalizedUrl, engine)) {
       return;
@@ -578,7 +566,7 @@ function extractHeuristicResults(
 }
 
 function extractHeuristicSnippet(
-  anchor: CheerioSelection,
+  anchor: HeuristicAnchor,
   title: string
 ): string {
   const candidateTexts = [
@@ -659,22 +647,23 @@ function isIgnoredSearchEngineUrl(
   const hostname = parsedUrl.hostname.toLowerCase();
   const pathname = parsedUrl.pathname.toLowerCase();
   const searchParams = parsedUrl.searchParams;
+  const internalUrlRules = SEARCH_ENGINE_INTERNAL_URL_RULES[engine];
 
   if (SEARCH_ENGINE_HOSTS[engine].includes(hostname)) {
     return true;
   }
 
-  const isEngineOwnedInternalHost = SEARCH_ENGINE_INTERNAL_HOST_PATTERNS[
-    engine
-  ].some((pattern) => pattern.test(hostname));
-
   if (
-    SEARCH_ENGINE_INTERNAL_ONLY_HOST_PATTERNS[engine].some((pattern) =>
+    internalUrlRules.alwaysIgnoreHostPatterns.some((pattern) =>
       pattern.test(hostname)
     )
   ) {
     return true;
   }
+
+  const isEngineOwnedInternalHost = internalUrlRules.ownedHostPatterns.some(
+    (pattern) => pattern.test(hostname)
+  );
 
   if (isEngineOwnedInternalHost) {
     if (
@@ -769,59 +758,63 @@ function formatFailureSummary(failures: SearchEngineError[]): string {
   return ` [${details}]`;
 }
 
+function createSearchRequestInit(
+  method: "GET" | "POST",
+  body?: BodyInit
+): RequestInit {
+  return {
+    method,
+    headers: {
+      ...BROWSER_HEADERS,
+      "User-Agent": getRandomUserAgent(),
+    },
+    body,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  };
+}
+
+function createSearchUrl(
+  baseUrl: string,
+  params: Record<string, string>
+): string {
+  const url = new URL(baseUrl);
+  url.search = "";
+
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+
+  return url.toString();
+}
+
+function hasHttpProtocol(url: string): boolean {
+  return HTTP_PROTOCOL_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
 const SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
 
 const searchCache = new TtlCache<string, SearchResult[]>(SEARCH_CACHE_TTL_MS);
 
-const NON_RETRYABLE_SEARCH_ERRORS = [
-  "No Results",
-  "All search engines failed",
-  "Search failed across all engines",
-] as const;
-
 function shouldRetrySearchError(error: Error): boolean {
-  const retryable = getSearchExecutionRetryable(error);
-  if (retryable !== undefined) {
-    return retryable;
+  if (error instanceof SearchExecutionError) {
+    return error.retryable;
   }
 
-  return !NON_RETRYABLE_SEARCH_ERRORS.some((message) =>
-    error.message.includes(message)
-  );
-}
-
-function getSearchExecutionRetryable(error: Error): boolean | undefined {
-  if (typeof error !== "object" || error === null) {
-    return undefined;
-  }
-
-  if (!("retryable" in error)) {
-    return undefined;
-  }
-
-  const retryable = Reflect.get(error, "retryable");
-
-  return typeof retryable === "boolean" ? retryable : undefined;
+  return true;
 }
 
 export async function searchWithRetryAndCache(
   query: string,
   maxResults: number
 ): Promise<SearchResult[]> {
-  if (searchCache.has(query)) {
-    return (searchCache.get(query) ?? []).slice(0, maxResults);
-  }
-
-  const results = await pRetry(
-    async () => (await searchDetailed(query)).results,
-    {
+  const results = await searchCache.getOrSet(query, async () =>
+    pRetry(async () => executeSearch(query), {
       retries: 2,
       minTimeout: 2000,
       factor: 2,
       shouldRetry: ({ error }) => shouldRetrySearchError(error),
-    }
+    })
   );
 
-  searchCache.set(query, results);
   return results.slice(0, maxResults);
 }
