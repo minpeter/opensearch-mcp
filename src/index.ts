@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import pkg from "../package.json" with { type: "json" };
-import { fetchUrlWithCache } from "./fetch.ts";
+import { fetchUrlsWithCache } from "./fetch.ts";
 import { searchWithRetryAndCache } from "./search.ts";
 import {
   createFetchToolResult,
@@ -48,11 +48,14 @@ server.registerTool(
       "Search the web and return a text-first result list with title, URL, snippet, and originating search engine for each hit. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
     inputSchema: webSearchInputSchema,
   },
-  async ({ query, numResults }) => {
+  async (input) => {
     try {
       return createSearchToolResult(
-        query,
-        await searchWithRetryAndCache(query, numResults)
+        input.query,
+        await searchWithRetryAndCache(
+          input.query,
+          getSearchResultCount(input)
+        )
       );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
