@@ -68,11 +68,11 @@ beforeEach(() => {
 });
 
 describe("fetchUrl", () => {
-  it("returns Exa MCP content first when available", async () => {
+  it("returns Exa MCP content first when available and preserves the requested URL", async () => {
     fetchExaMcp.mockResolvedValueOnce({
       content: "# Exa markdown body",
       title: "Exa title",
-      url: "https://example.com/article",
+      url: "https://exa.ai/article",
     });
     const mockFetch = vi.fn();
     vi.stubGlobal("fetch", mockFetch);

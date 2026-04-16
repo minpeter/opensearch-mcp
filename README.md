@@ -69,9 +69,16 @@ Returns a compact text rendering of the full result set in `content` and an arra
 | `url` | string | Legacy single URL to fetch |
 | `urls` | string[] | Optional batch of URLs to fetch in one call |
 
-For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first and returns that result when available. If Exa MCP is unavailable or disabled via `OPENSEARCH_ENABLE_EXA_MCP=false`, it falls back to the local fetch pipeline (Readability/PDF extraction) and then Jina for sparse content.
+For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first and returns that result when available. If Exa MCP is unavailable or disabled via `OPENSEARCH_ENABLE_EXA_MCP=false`, it falls back to the local fetch pipeline (Readability/PDF extraction) and then Jina for sparse content. The outward-facing MCP response stays normalized across those paths, and `structuredContent.url` continues to echo the requested URL.
 
 Single-fetch calls keep the extracted markdown body in `content` for compatibility and expose `{ title, url, length, count, results }` in `structuredContent`. Batch-fetch calls return multiple text blocks in `content` plus `{ count, results }` in `structuredContent`, where each entry in `results` is `{ title, url, content, length }`.
+
+### Environment toggles
+
+- `BRAVE_SEARCH_API_KEY` — enable the Brave Search API provider.
+- `EXA_API_KEY` — enable Exa's raw Search API and authenticate hosted Exa MCP requests when available.
+- `OPENSEARCH_ENABLE_EXA_MCP=false` — disable Exa's hosted MCP path for both `web_search` and `web_fetch`.
+- `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` — append Google scraping as the final fallback search provider.
 
 ## Development
 
