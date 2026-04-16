@@ -1,6 +1,6 @@
 # opensearch-mcp
 
-MCP server with `web_search` and `web_fetch` tools.
+Zero-config web search and fetch MCP with free-tier-first routing across official providers
 
 ## Tools
 
