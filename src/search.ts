@@ -3,6 +3,7 @@ import pRetry from "p-retry";
 import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
+import { searchExaMcp } from "./exa-mcp.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const SEARCH_ENGINE_NAMES = [
@@ -222,11 +223,16 @@ const SCRAPE_SEARCH_ENGINES: Record<
 };
 
 const GOOGLE_SCRAPE_OPT_IN_ENV = "OPENSEARCH_ENABLE_GOOGLE_SCRAPE";
+const EXA_MCP_OPT_OUT_ENV = "OPENSEARCH_ENABLE_EXA_MCP";
 const BRAVE_API_KEY_ENV = "BRAVE_SEARCH_API_KEY";
 const EXA_API_KEY_ENV = "EXA_API_KEY";
 
 function isGoogleScrapeEnabled(): boolean {
   return process.env[GOOGLE_SCRAPE_OPT_IN_ENV] === "true";
+}
+
+function isExaMcpEnabled(): boolean {
+  return process.env[EXA_MCP_OPT_OUT_ENV] !== "false";
 }
 
 function getSearchProviders(): SearchProvider[] {
@@ -240,6 +246,8 @@ function getSearchProviders(): SearchProvider[] {
 
   if (exaApiKey) {
     providers.push(createExaSearchProvider(exaApiKey));
+  } else if (isExaMcpEnabled()) {
+    providers.push(createExaMcpSearchProvider());
   }
 
   providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.DuckDuckGo));
@@ -250,6 +258,33 @@ function getSearchProviders(): SearchProvider[] {
   }
 
   return providers;
+}
+
+function createExaMcpSearchProvider(): SearchProvider {
+  return {
+    name: "Exa",
+    async search(query: string): Promise<SearchResult[]> {
+      try {
+        const results = await searchExaMcp(query, 10);
+
+        if (results.length === 0) {
+          throw new SearchEngineError("Exa", "no-results", "No Results");
+        }
+
+        return attachEngine("Exa", results);
+      } catch (error) {
+        if (error instanceof SearchEngineError) {
+          throw error;
+        }
+
+        throw new SearchEngineError(
+          "Exa",
+          classifyExaMcpFailure(error),
+          `Exa MCP search failed: ${getErrorMessage(error)}`
+        );
+      }
+    },
+  };
 }
 
 function createScrapeSearchProvider(
@@ -1034,11 +1069,32 @@ function classifyApiStatusFailure(
   engine: SearchEngineName,
   status: number
 ): EngineFailureKind {
-  if ((engine === "Brave" || engine === "Exa") && status === 401) {
+  if (
+    (engine === "Brave" && status === 401) ||
+    (engine === "Exa" && (status === 401 || status === 402))
+  ) {
     return "misconfigured";
   }
 
   return classifyStatusFailure(status);
+}
+
+function classifyExaMcpFailure(error: unknown): EngineFailureKind {
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (
+    message.includes("payment required") ||
+    message.includes("invalid api key") ||
+    message.includes("unauthorized")
+  ) {
+    return "misconfigured";
+  }
+
+  if (message.includes("429") || message.includes("rate limit")) {
+    return "blocked";
+  }
+
+  return "transient";
 }
 
 function getErrorMessage(error: unknown): string {

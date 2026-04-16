@@ -4,9 +4,7 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
-- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
-- **`web_search`** — Multi-engine web search. Uses Brave → Exa → DuckDuckGo → Bing when corresponding API keys are configured, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
+- **`web_search`** — Multi-engine web search. Uses Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing when corresponding paths are available, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
 - **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
@@ -46,7 +44,19 @@ Or with a specific version:
 
 Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 
-Set `BRAVE_SEARCH_API_KEY` and/or `EXA_API_KEY` to enable API-backed providers. Set `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` to append Google scraping as a last-resort fallback.
+| Provider | Path used by this server | Credential needed here? | Notes |
+|---|---|---:|---|
+| Brave | Brave Search API | Yes | Requires `BRAVE_SEARCH_API_KEY`. |
+| Exa | Exa Search API | Yes | Used when `EXA_API_KEY` is set. |
+| Exa | Exa hosted MCP (`https://mcp.exa.ai/mcp`) | No (free hosted plan) | Used automatically when `EXA_API_KEY` is absent unless `OPENSEARCH_ENABLE_EXA_MCP=false`. |
+| DuckDuckGo | HTML scraping | No | Public HTML endpoint; can still hit anti-bot challenges. |
+| Bing | HTML scraping | No | Public search page scraping with wrapper URL normalization. |
+| Google | HTML scraping (opt-in) | No | Disabled by default and used only as a last resort because it is challenge-prone. |
+
+This project intentionally aggregates only official API paths, official hosted MCP paths, or public web pages. It does not rely on reverse-engineered private endpoints or credential bypasses.
+
+The fallback chain is Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. `BRAVE_SEARCH_API_KEY` enables Brave. `EXA_API_KEY` enables the raw Exa Search API. When `EXA_API_KEY` is absent, the server uses Exa's official hosted MCP endpoint and its free plan before falling through to scrape providers. Set `OPENSEARCH_ENABLE_EXA_MCP=false` to skip the hosted Exa MCP path. If Brave or raw Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
+
 
 Returns a compact text rendering of the full result set in `content` and an array of `{ engine, title, url, snippet }` in `structuredContent.results`, where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 
