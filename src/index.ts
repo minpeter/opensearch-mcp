@@ -35,11 +35,35 @@ function createToolErrorResponse(
   };
 }
 
+function createSearchContent(
+  query: string,
+  results: Array<{
+    title: string;
+    url: string;
+  }>
+): string {
+  const lines = results.map(
+    (result, index) => `${index + 1}. ${result.title} — ${result.url}`
+  );
+
+  return `Returned ${results.length} search results for "${query}".\n${lines.join("\n")}`;
+}
+
+function createFetchContent(result: {
+  length: number;
+  title: string;
+  url: string;
+}): string {
+  const label = result.title || result.url;
+
+  return `Fetched ${label} (${result.length} chars).\nSource: ${result.url}\nFull extracted content is available in structuredContent.content.`;
+}
+
 server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a concise summary; `structuredContent.results` contains the complete result set. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
@@ -58,7 +82,7 @@ server.registerTool(
       const results = await searchWithRetryAndCache(query, max_results);
 
       return {
-        content: [createTextContent(JSON.stringify(results))],
+        content: [createTextContent(createSearchContent(query, results))],
         structuredContent: { results },
       };
     } catch (error) {
@@ -71,7 +95,7 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch a URL and return its content as markdown. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
+      "Fetch a URL and return its content as markdown. `content` contains a concise summary; `structuredContent.content` contains the complete extracted body. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
     inputSchema: z.object({
       url: z.url().describe("URL to fetch and extract content from."),
     }),
@@ -88,7 +112,7 @@ server.registerTool(
         length: result.length,
       };
       return {
-        content: [createTextContent(result.content)],
+        content: [createTextContent(createFetchContent(result))],
         structuredContent: structured,
       };
     } catch (error) {

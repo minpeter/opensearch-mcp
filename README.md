@@ -4,8 +4,8 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). Returns title, URL, snippet, and originating engine for each result.
-- **`web_fetch`** — Fetches a URL and converts it to markdown. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
+- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). `content` returns a concise summary and `structuredContent.results` returns the complete result set.
+- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns a concise summary and `structuredContent.content` returns the complete extracted body. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
 
@@ -42,7 +42,7 @@ Or with a specific version:
 | `query` | string | — | Search query |
 | `max_results` | number | 5 | Max results to return (1–15) |
 
-Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"DuckDuckGo"`, `"Google"`, or `"Bing"`.
+Returns a concise text summary in `content` and an array of `{ engine, title, url, snippet }` in `structuredContent.results`, where `engine` is one of `"DuckDuckGo"`, `"Google"`, or `"Bing"`.
 
 ### `web_fetch`
 
@@ -50,7 +50,7 @@ Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `
 |-----------|------|-------------|
 | `url` | string | URL to fetch |
 
-Returns `{ title, content, url, length }` where `content` is markdown.
+Returns a concise text summary in `content` and `{ title, content, url, length }` in `structuredContent`, where `structuredContent.content` is the extracted markdown.
 
 ## Development
 
