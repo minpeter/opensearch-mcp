@@ -3,8 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
-import { fetchUrlsWithCache } from "./fetch.ts";
-import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
+import { fetchUrlWithCache } from "./fetch.ts";
+import { searchWithRetryAndCache } from "./search.ts";
 import {
   createFetchToolResult,
   createSearchToolResult,
@@ -12,8 +12,6 @@ import {
   getFetchUrls,
   getSearchResultCount,
   webFetchInputSchema,
-  webFetchOutputSchema,
-  webSearchInputSchema,
 } from "./tool-io.ts";
 
 const server = new McpServer({
