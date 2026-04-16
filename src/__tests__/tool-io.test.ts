@@ -1,3 +1,5 @@
+import { normalizeObjectSchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
+import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import { describe, expect, it } from "vitest";
 
 import type { FetchResult } from "../fetch.ts";
@@ -114,7 +116,7 @@ describe("webSearchInputSchema", () => {
 
     expect(parsed).toEqual({
       query: "example query",
-      numResults: 4,
+      max_results: 4,
     });
   });
 
@@ -128,6 +130,21 @@ describe("webSearchInputSchema", () => {
     expect(parsed).toEqual({
       query: "example query",
       numResults: 6,
+      max_results: 3,
+    });
+  });
+
+  it("remains exportable as an object schema for listTools", () => {
+    const normalizedSchema = normalizeObjectSchema(webSearchInputSchema);
+    const jsonSchema = normalizedSchema
+      ? toJsonSchemaCompat(normalizedSchema)
+      : undefined;
+
+    expect(normalizedSchema).toBeDefined();
+    expect(jsonSchema?.properties).toMatchObject({
+      query: expect.objectContaining({ type: "string" }),
+      numResults: expect.objectContaining({ type: "integer" }),
+      max_results: expect.objectContaining({ type: "integer" }),
     });
   });
 });
