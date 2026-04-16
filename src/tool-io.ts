@@ -96,14 +96,13 @@ export function createSearchContent(
   query: string,
   results: SearchToolResultItem[]
 ): string {
-  const lines = results.map(
-    (result, index) =>
-      [
-        `Title: ${result.title}`,
-        `URL: ${result.url}`,
-        `Highlights: ${result.snippet}`,
-        `Source: ${result.engine}`,
-      ].join("\n")
+  const lines = results.map((result) =>
+    [
+      `Title: ${result.title}`,
+      `URL: ${result.url}`,
+      `Highlights: ${result.snippet}`,
+      `Source: ${result.engine}`,
+    ].join("\n")
   );
 
   return `Returned ${results.length} search results for "${query}".\n\n${lines.join("\n\n")}`;
@@ -142,9 +141,7 @@ export function getFetchMaxCharacters(
   return input.maxCharacters;
 }
 
-function createFetchContentBlock(
-  result: FetchResult,
-): string {
+function createFetchContentBlock(result: FetchResult): string {
   const title = result.title || result.url;
 
   return `Title: ${title}\nURL: ${result.url}\nLength: ${result.length}\n\n${result.content}`;
@@ -175,7 +172,7 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
         type: textContentType,
         text: `Fetched ${normalizedResults.length} URLs. Each block below contains source metadata followed by extracted markdown.`,
       },
-      ...normalizedResults.map((result, index) => ({
+      ...normalizedResults.map((result) => ({
         type: textContentType,
         text: createFetchContentBlock(result),
       })),
