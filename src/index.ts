@@ -50,7 +50,10 @@ server.registerTool(
   },
   async ({ query, numResults }) => {
     try {
-      return createSearchToolResult(query, await searchWithRetryAndCache(query, numResults));
+      return createSearchToolResult(
+        query,
+        await searchWithRetryAndCache(query, numResults)
+      );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
     }
