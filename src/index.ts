@@ -79,7 +79,7 @@ server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa → DuckDuckGo → Bing when configured, with Google scraping available as an opt-in last resort.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing when configured, with Google scraping available as an opt-in last resort.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
@@ -109,7 +109,7 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
+      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Uses Exa's hosted MCP fetch path first when enabled, then falls back to local HTML/PDF extraction and finally Jina AI for sparse pages.",
     inputSchema: z.object({
       url: z.url().describe("URL to fetch and extract content from."),
     }),

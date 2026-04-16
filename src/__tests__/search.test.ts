@@ -31,6 +31,7 @@ function resetSearchEnv(): void {
   delete process.env.BRAVE_SEARCH_API_KEY;
   delete process.env.EXA_API_KEY;
   delete process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE;
+  process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
 }
 
 describe("search", () => {

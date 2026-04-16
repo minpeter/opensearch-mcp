@@ -1,11 +1,22 @@
 export const DEFAULT_EXA_MCP_SERVER_URL = "https://mcp.exa.ai/mcp";
+export const DEFAULT_EXA_MCP_FETCH_TOOL = "web_fetch_exa";
 export const DEFAULT_EXA_MCP_SEARCH_TOOL = "web_search_exa";
+const EXA_FETCH_TITLE_PREFIX = "# ";
+const EXA_FETCH_URL_PREFIX = "URL:";
+const EXA_FETCH_PUBLISHED_PREFIX = "Published:";
+const EXA_FETCH_AUTHOR_PREFIX = "Author:";
 const SEARCH_RESULT_SEPARATOR = /\n\s*---\s*\n/gu;
 const MAX_SNIPPET_LENGTH = 280;
 
 export interface ExaMcpSearchResult {
   engine: "Exa";
   snippet: string;
+  title: string;
+  url: string;
+}
+
+export interface ExaMcpFetchResult {
+  content: string;
   title: string;
   url: string;
 }
@@ -45,6 +56,24 @@ export function parseExaMcpContentItems(
     .flatMap((item) => parseExaMcpSearchToolText(item.text ?? ""));
 
   return dedupeByUrl(results);
+}
+
+export function parseExaMcpFetchContentItem(
+  content: ExaMcpContentItem[] | undefined
+): ExaMcpFetchResult | null {
+  if (!content) {
+    return null;
+  }
+
+  const firstTextItem = content.find(
+    (item) => item.type === "text" && typeof item.text === "string"
+  );
+
+  if (!firstTextItem?.text) {
+    return null;
+  }
+
+  return parseExaMcpFetchText(firstTextItem.text);
 }
 
 export function parseExaMcpSearchToolText(text: string): ExaMcpSearchResult[] {
@@ -148,6 +177,47 @@ function dedupeByUrl(results: ExaMcpSearchResult[]): ExaMcpSearchResult[] {
     seenUrls.add(result.url);
     return true;
   });
+}
+
+export function parseExaMcpFetchText(text: string): ExaMcpFetchResult | null {
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    return null;
+  }
+
+  const lines = normalizedText.split("\n");
+  const titleLine = lines.find((line) =>
+    line.startsWith(EXA_FETCH_TITLE_PREFIX)
+  );
+  const urlLine = lines.find((line) => line.startsWith(EXA_FETCH_URL_PREFIX));
+
+  if (!(titleLine && urlLine)) {
+    return null;
+  }
+
+  const contentStartIndex = lines.findIndex(
+    (line, index) =>
+      index > lines.indexOf(urlLine) &&
+      !line.startsWith(EXA_FETCH_PUBLISHED_PREFIX) &&
+      !line.startsWith(EXA_FETCH_AUTHOR_PREFIX) &&
+      line.trim().length > 0
+  );
+
+  const content = (
+    contentStartIndex === -1
+      ? normalizedText
+      : lines.slice(contentStartIndex).join("\n")
+  ).trim();
+
+  if (!content) {
+    return null;
+  }
+
+  return {
+    content,
+    title: titleLine.slice(EXA_FETCH_TITLE_PREFIX.length).trim(),
+    url: urlLine.slice(EXA_FETCH_URL_PREFIX.length).trim(),
+  };
 }
 
 function cleanText(text: string): string {
