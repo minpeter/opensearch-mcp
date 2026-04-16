@@ -73,13 +73,6 @@ For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fe
 
 Single-fetch calls keep the extracted markdown body in `content` for compatibility and expose `{ title, url, length, count, results }` in `structuredContent`. Batch-fetch calls return multiple text blocks in `content` plus `{ count, results }` in `structuredContent`, where each entry in `results` is `{ title, url, content, length }`.
 
-### Environment toggles
-
-- `BRAVE_SEARCH_API_KEY` — enable the Brave Search API provider.
-- `EXA_API_KEY` — enable Exa's raw Search API and authenticate hosted Exa MCP requests when available.
-- `OPENSEARCH_ENABLE_EXA_MCP=false` — disable Exa's hosted MCP path for both `web_search` and `web_fetch`.
-- `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` — append Google scraping as the final fallback search provider.
-
 ## Development
 
 ```bash
