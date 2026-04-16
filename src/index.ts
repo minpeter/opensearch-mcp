@@ -9,6 +9,8 @@ import {
   createFetchToolResult,
   createSearchToolResult,
   getFetchUrls,
+  getSearchResultCount,
+  webSearchInputSchema,
   webFetchInputSchema,
   webFetchOutputSchema,
 } from "./tool-io.ts";
@@ -45,24 +47,17 @@ server.registerTool(
   {
     description:
       "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
-    inputSchema: z.object({
-      query: z.string().describe("Search query string."),
-      max_results: z
-        .int()
-        .positive()
-        .max(15)
-        .default(5)
-        .describe("Maximum number of results to return. (1-15)"),
-    }),
+    inputSchema: webSearchInputSchema,
     outputSchema: z.object({
       results: searchResultsSchema,
     }),
   },
-  async ({ query, max_results }) => {
+  async (input) => {
     try {
+      const { query } = input;
       return createSearchToolResult(
         query,
-        await searchWithRetryAndCache(query, max_results)
+        await searchWithRetryAndCache(query, getSearchResultCount(input))
       );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);

@@ -5,6 +5,8 @@ import {
   createFetchToolResult,
   createSearchContent,
   getFetchUrls,
+  getSearchResultCount,
+  webSearchInputSchema,
   webFetchInputSchema,
 } from "../tool-io.ts";
 
@@ -19,6 +21,32 @@ function createFetchResult(overrides: Partial<FetchResult> = {}): FetchResult {
 }
 
 describe("webFetchInputSchema", () => {
+  it("accepts Exa-style numResults for search result limits", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+      numResults: 7,
+    });
+
+    expect(getSearchResultCount(parsed)).toBe(7);
+  });
+
+  it("still accepts the legacy max_results alias for search result limits", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+      max_results: 3,
+    });
+
+    expect(getSearchResultCount(parsed)).toBe(3);
+  });
+
+  it("defaults search result limits when neither field is provided", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+    });
+
+    expect(getSearchResultCount(parsed)).toBe(5);
+  });
+
   it("accepts the legacy url field", () => {
     const parsed = webFetchInputSchema.parse({
       url: "https://example.com/legacy",
@@ -37,19 +65,19 @@ describe("webFetchInputSchema", () => {
 });
 
 describe("getFetchUrls", () => {
-  it("merges and deduplicates url and urls while preserving order", () => {
+  it("keeps batch urls first and deduplicates the legacy url alias", () => {
     const urls = getFetchUrls({
       url: "https://example.com/one",
       urls: [
-        "https://example.com/one",
         "https://example.com/two",
+        "https://example.com/one",
         "https://example.com/three",
       ],
     });
 
     expect(urls).toEqual([
-      "https://example.com/one",
       "https://example.com/two",
+      "https://example.com/one",
       "https://example.com/three",
     ]);
   });
