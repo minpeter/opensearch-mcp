@@ -4,7 +4,7 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — DuckDuckGo HTML search. Returns title, URL, and snippet for each result.
+- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). Returns title, URL, snippet, and originating engine for each result.
 - **`web_fetch`** — Fetches a URL and converts it to markdown. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
@@ -42,7 +42,7 @@ Or with a specific version:
 | `query` | string | — | Search query |
 | `max_results` | number | 5 | Max results to return (1–15) |
 
-Returns an array of `{ title, url, snippet }`.
+Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"DuckDuckGo"`, `"Google"`, or `"Bing"`.
 
 ### `web_fetch`
 

@@ -35,7 +35,13 @@ describe("search", () => {
 
     expect(results.length).toBeGreaterThan(5);
     expect(
-      results.every((result) => result.title && result.url && result.snippet)
+      results.every(
+        (result) =>
+          result.title &&
+          result.url &&
+          result.snippet &&
+          result.engine === "DuckDuckGo"
+      )
     ).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledWith(
@@ -59,6 +65,7 @@ describe("search", () => {
 
     expect(results).toHaveLength(2);
     expect(results[0]).toEqual({
+      engine: "Google",
       snippet:
         "GitHub is where over 100 million developers shape the future of software.",
       title: "GitHub · Build and ship software",
@@ -89,6 +96,7 @@ describe("search", () => {
     const results = await search("github");
 
     expect(results).toHaveLength(2);
+    expect(results[0]?.engine).toBe("Bing");
     expect(results[0]?.title).toBe("GitHub");
     expect(results[0]?.url).toBe("https://github.com/");
     expect(results[0]?.snippet).toContain("software collaboration");
@@ -117,6 +125,7 @@ describe("search", () => {
 
     expect(results).toEqual([
       {
+        engine: "Google",
         snippet:
           "is a detailed external result with useful descriptive text for testing heuristic extraction.",
         title: "Example Alpha",
@@ -143,6 +152,7 @@ describe("search", () => {
 
     expect(results).toEqual([
       {
+        engine: "Bing",
         snippet:
           "includes enough nearby body text to become a cleaned snippet even when standard selectors are absent.",
         title: "Example Beta",
@@ -169,6 +179,7 @@ describe("search", () => {
 
     expect(results).toEqual([
       {
+        engine: "Bing",
         snippet: "Bing wrapper URLs should decode to final usable targets.",
         title: "Example Wrapped Result",
         url: "https://example.net/path?x=1",
@@ -189,6 +200,7 @@ describe("search", () => {
 
     const results = await search("alpha-normalized");
 
+    expect(results[0]?.engine).toBe("Google");
     expect(results[0]?.url).toBe("https://example.com/alpha");
     expect(results).toHaveLength(1);
   });
@@ -343,6 +355,7 @@ describe("searchWithRetryAndCache", () => {
     );
 
     expect(firstResults).toEqual(secondResults);
+    expect(firstResults[0]?.engine).toBe("Bing");
     expect(firstResults[0]?.title).toBe("GitHub");
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
