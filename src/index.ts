@@ -13,9 +13,7 @@ const server = new McpServer({
   version,
 });
 
-function createTextContent(text: string) {
-  return { type: "text" as const, text };
-}
+const textContentType = "text" as const;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -30,40 +28,68 @@ function createToolErrorResponse(
   console.error(`[opensearch] ${toolName} failed: ${errorMessage}`);
 
   return {
-    content: [createTextContent(`${action} failed: ${errorMessage}`)],
+    content: [
+      { type: textContentType, text: `${action} failed: ${errorMessage}` },
+    ],
     isError: true,
   };
 }
 
-function createSearchContent(
+export function createSearchContent(
   query: string,
   results: Array<{
+    engine: string;
+    snippet: string;
     title: string;
     url: string;
   }>
 ): string {
   const lines = results.map(
-    (result, index) => `${index + 1}. ${result.title} — ${result.url}`
+    (result, index) =>
+      `${index + 1}. [${result.engine}] ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}`
   );
 
-  return `Returned ${results.length} search results for "${query}".\n${lines.join("\n")}`;
+  return `Returned ${results.length} search results for "${query}".\n\n${lines.join("\n\n")}`;
 }
 
-function createFetchContent(result: {
+export function createSearchToolResult(
+  query: string,
+  results: Array<{
+    engine: string;
+    snippet: string;
+    title: string;
+    url: string;
+  }>
+) {
+  return {
+    content: [
+      { type: textContentType, text: createSearchContent(query, results) },
+    ],
+    structuredContent: { results },
+  };
+}
+
+export function createFetchToolResult(result: {
+  content: string;
   length: number;
   title: string;
   url: string;
-}): string {
-  const label = result.title || result.url;
-
-  return `Fetched ${label} (${result.length} chars).\nSource: ${result.url}\nFull extracted content is available in structuredContent.content.`;
+}) {
+  return {
+    content: [{ type: textContentType, text: result.content }],
+    structuredContent: {
+      title: result.title,
+      url: result.url,
+      length: result.length,
+    },
+  };
 }
 
 server.registerTool(
   "web_search",
   {
     description:
-      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a concise summary; `structuredContent.results` contains the complete result set. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
+      "Search the web and return title, URL, snippet, and originating search engine for each result. `content` contains a compact text rendering of the returned results, and `structuredContent.results` contains the same result set in machine-readable form. Falls back through DuckDuckGo → Google → Bing. Use when higher-quality websearch tools are unavailable.",
     inputSchema: z.object({
       query: z.string().describe("Search query string."),
       max_results: z
@@ -79,12 +105,10 @@ server.registerTool(
   },
   async ({ query, max_results }) => {
     try {
-      const results = await searchWithRetryAndCache(query, max_results);
-
-      return {
-        content: [createTextContent(createSearchContent(query, results))],
-        structuredContent: { results },
-      };
+      return createSearchToolResult(
+        query,
+        await searchWithRetryAndCache(query, max_results)
+      );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
     }
@@ -95,26 +119,19 @@ server.registerTool(
   "web_fetch",
   {
     description:
-      "Fetch a URL and return its content as markdown. `content` contains a concise summary; `structuredContent.content` contains the complete extracted body. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
+      "Fetch a URL and return its content as markdown. `content` contains the complete extracted body, and `structuredContent` contains extraction metadata. Supports HTML pages and PDF documents. Falls back to Jina AI for sparse pages.",
     inputSchema: z.object({
       url: z.url().describe("URL to fetch and extract content from."),
     }),
-    outputSchema: fetchResultSchema,
+    outputSchema: z.object({
+      title: z.string(),
+      url: z.string(),
+      length: z.number(),
+    }),
   },
   async ({ url }) => {
     try {
-      const result = await fetchUrlWithCache(url);
-
-      const structured = {
-        title: result.title,
-        content: result.content,
-        url: result.url,
-        length: result.length,
-      };
-      return {
-        content: [createTextContent(createFetchContent(result))],
-        structuredContent: structured,
-      };
+      return createFetchToolResult(await fetchUrlWithCache(url));
     } catch (error) {
       return createToolErrorResponse("web_fetch", "Fetch", error);
     }
