@@ -84,9 +84,7 @@ export function parseExaMcpSearchToolText(text: string): ExaMcpSearchResult[] {
     return [];
   }
 
-  const blocks = trimmedText.includes("\n---\n")
-    ? trimmedText.split(SEARCH_RESULT_SEPARATOR)
-    : [trimmedText];
+  const blocks = trimmedText.split(SEARCH_RESULT_SEPARATOR);
 
   const results = blocks
     .map((block) => parseExaMcpResultBlock(block))

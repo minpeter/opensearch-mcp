@@ -1171,7 +1171,9 @@ export async function searchWithRetryAndCache(
   query: string,
   maxResults: number
 ): Promise<SearchResult[]> {
-  const results = await searchCache.getOrSet(query, async () =>
+  const cacheKey = createSearchCacheKey(query, maxResults);
+
+  const results = await searchCache.getOrSet(cacheKey, async () =>
     pRetry(async () => search(query, maxResults), {
       retries: 2,
       minTimeout: 2000,
@@ -1181,4 +1183,8 @@ export async function searchWithRetryAndCache(
   );
 
   return results.slice(0, maxResults);
+}
+
+function createSearchCacheKey(query: string, maxResults: number): string {
+  return `${query}\u0000${maxResults}`;
 }
