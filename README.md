@@ -4,8 +4,6 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
-- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 - **`web_search`** — Multi-engine web search. Uses Brave → Exa → DuckDuckGo → Bing when corresponding API keys are configured, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
 - **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
@@ -46,7 +44,15 @@ Or with a specific version:
 
 Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 
-Set `BRAVE_SEARCH_API_KEY` and/or `EXA_API_KEY` to enable API-backed providers. Set `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` to append Google scraping as a last-resort fallback.
+| Provider | Path used by this server | Credential needed here? | Notes |
+|---|---|---:|---|
+| Brave | Brave Search API | Yes | Requires `BRAVE_SEARCH_API_KEY`. |
+| Exa | Exa Search API | Yes | Exa's hosted MCP service has a free plan, but this package calls the raw Search API directly. |
+| DuckDuckGo | HTML scraping | No | Public HTML endpoint; can still hit anti-bot challenges. |
+| Bing | HTML scraping | No | Public search page scraping with wrapper URL normalization. |
+| Google | HTML scraping (opt-in) | No | Disabled by default and used only as a last resort because it is challenge-prone. |
+
+Set `BRAVE_SEARCH_API_KEY` and/or `EXA_API_KEY` to enable API-backed providers. This server calls the Brave Search API and Exa Search API directly, so those providers do not return search results anonymously here and require valid credentials. DuckDuckGo and Bing scraping work without API credentials. The fallback chain is Brave → Exa → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. If Brave or Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
 
 Returns a compact text rendering of the full result set in `content` and an array of `{ engine, title, url, snippet }` in `structuredContent.results`, where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 

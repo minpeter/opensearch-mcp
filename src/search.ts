@@ -1034,7 +1034,10 @@ function classifyApiStatusFailure(
   engine: SearchEngineName,
   status: number
 ): EngineFailureKind {
-  if ((engine === "Brave" || engine === "Exa") && status === 401) {
+  if (
+    (engine === "Brave" && status === 401) ||
+    (engine === "Exa" && (status === 401 || status === 402))
+  ) {
     return "misconfigured";
   }
 
