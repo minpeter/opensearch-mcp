@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createFetchToolResult, createSearchToolResult } from "../tool-io.ts";
 
 describe("tool result shaping", () => {
-  it("renders search results as detailed text without structured output", () => {
+  it("renders search results as Exa-style text without structured output", () => {
     const results = [
       {
         engine: "Bing",
@@ -21,9 +21,10 @@ describe("tool result shaping", () => {
         text: [
           'Returned 1 search results for "typescript".',
           "",
-          "1. [Bing] TypeScript",
+          "Title: TypeScript",
           "URL: https://www.typescriptlang.org/",
-          "Snippet: Typed JavaScript at scale.",
+          "Highlights: Typed JavaScript at scale.",
+          "Source: Bing",
         ].join("\n"),
       },
     ]);
@@ -42,7 +43,7 @@ describe("tool result shaping", () => {
       {
         type: "text",
         text: [
-          "# Example",
+          "Title: Example",
           "URL: https://example.com",
           "Length: 20",
           "",

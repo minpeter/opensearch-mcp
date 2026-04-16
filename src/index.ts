@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
 import { fetchUrlWithCache } from "./fetch.ts";
@@ -12,6 +11,7 @@ import {
   getFetchUrls,
   getSearchResultCount,
   webFetchInputSchema,
+  webSearchInputSchema,
 } from "./tool-io.ts";
 
 const server = new McpServer({
@@ -46,23 +46,11 @@ server.registerTool(
   {
     description:
       "Search the web and return a text-first result list with title, URL, snippet, and originating search engine for each hit. Falls back through Brave → Exa MCP hosted search (free tier first) → Exa API when configured → DuckDuckGo → Bing, with Google scraping available as an opt-in last resort.",
-    inputSchema: z.object({
-      query: z.string().describe("Search query string."),
-      max_results: z
-        .int()
-        .positive()
-        .max(15)
-        .default(5)
-        .describe("Maximum number of results to return. (1-15)"),
-    }),
+    inputSchema: webSearchInputSchema,
   },
-  async (input) => {
+  async ({ query, numResults }) => {
     try {
-      const { query } = input;
-      return createSearchToolResult(
-        query,
-        await searchWithRetryAndCache(query, getSearchResultCount(input))
-      );
+      return createSearchToolResult(query, await searchWithRetryAndCache(query, numResults));
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
     }

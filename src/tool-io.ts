@@ -9,6 +9,27 @@ const MAX_SEARCH_RESULTS = 15;
 
 const searchResultCountSchema = z.int().positive().max(MAX_SEARCH_RESULTS);
 
+export const webSearchInputSchema = z
+  .object({
+    query: z.string().describe("Search query string."),
+    numResults: z
+      .int()
+      .positive()
+      .max(15)
+      .optional()
+      .describe("Preferred maximum number of results to return. (1-15)"),
+    max_results: z
+      .int()
+      .positive()
+      .max(15)
+      .optional()
+      .describe("Legacy alias for numResults. (1-15)"),
+  })
+  .transform(({ query, numResults, max_results }) => ({
+    query,
+    numResults: numResults ?? max_results ?? 5,
+  }));
+
 export interface SearchToolResultItem {
   engine: string;
   snippet: string;
@@ -56,7 +77,12 @@ export function createSearchContent(
 ): string {
   const lines = results.map(
     (result, index) =>
-      `${index + 1}. [${result.engine}] ${result.title}\nURL: ${result.url}\nSnippet: ${result.snippet}`
+      [
+        `Title: ${result.title}`,
+        `URL: ${result.url}`,
+        `Highlights: ${result.snippet}`,
+        `Source: ${result.engine}`,
+      ].join("\n")
   );
 
   return `Returned ${results.length} search results for "${query}".\n\n${lines.join("\n\n")}`;
@@ -97,13 +123,10 @@ export function getFetchMaxCharacters(
 
 function createFetchContentBlock(
   result: FetchResult,
-  index: number,
-  total: number
 ): string {
-  const heading = result.title || result.url;
-  const prefix = total > 1 ? `# ${index + 1}. ${heading}` : `# ${heading}`;
+  const title = result.title || result.url;
 
-  return `${prefix}\nURL: ${result.url}\nLength: ${result.length}\n\n${result.content}`;
+  return `Title: ${title}\nURL: ${result.url}\nLength: ${result.length}\n\n${result.content}`;
 }
 
 export function createFetchToolResult(results: FetchResult | FetchResult[]) {
@@ -119,11 +142,7 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
       content: [
         {
           type: textContentType,
-          text: createFetchContentBlock(
-            firstResult,
-            0,
-            normalizedResults.length
-          ),
+          text: createFetchContentBlock(firstResult),
         },
       ],
     };
@@ -133,11 +152,11 @@ export function createFetchToolResult(results: FetchResult | FetchResult[]) {
     content: [
       {
         type: textContentType,
-        text: `Fetched ${normalizedResults.length} URLs. Each block below contains extracted markdown plus source metadata.`,
+        text: `Fetched ${normalizedResults.length} URLs. Each block below contains source metadata followed by extracted markdown.`,
       },
       ...normalizedResults.map((result, index) => ({
         type: textContentType,
-        text: createFetchContentBlock(result, index, normalizedResults.length),
+        text: createFetchContentBlock(result),
       })),
     ],
   };

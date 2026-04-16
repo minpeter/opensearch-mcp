@@ -93,6 +93,45 @@ describe("getFetchUrls", () => {
   });
 });
 
+describe("webSearchInputSchema", () => {
+  it("accepts numResults as the preferred result-count field", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+      numResults: 7,
+    });
+
+    expect(parsed).toEqual({
+      query: "example query",
+      numResults: 7,
+    });
+  });
+
+  it("maps the legacy max_results alias to numResults", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+      max_results: 4,
+    });
+
+    expect(parsed).toEqual({
+      query: "example query",
+      numResults: 4,
+    });
+  });
+
+  it("prefers numResults when both fields are provided", () => {
+    const parsed = webSearchInputSchema.parse({
+      query: "example query",
+      numResults: 6,
+      max_results: 3,
+    });
+
+    expect(parsed).toEqual({
+      query: "example query",
+      numResults: 6,
+    });
+  });
+});
+
 describe("createFetchToolResult", () => {
   it("returns a single text-first fetch block with metadata and body", () => {
     const result = createFetchResult();
@@ -102,7 +141,7 @@ describe("createFetchToolResult", () => {
       {
         type: "text",
         text: [
-          "# Example title",
+          "Title: Example title",
           "URL: https://example.com/article",
           `Length: ${result.length}`,
           "",
@@ -129,13 +168,13 @@ describe("createFetchToolResult", () => {
     expect(toolResult.content).toHaveLength(3);
     expect(toolResult.content[0]).toEqual({
       type: "text",
-      text: "Fetched 2 URLs. Each block below contains extracted markdown plus source metadata.",
+      text: "Fetched 2 URLs. Each block below contains source metadata followed by extracted markdown.",
     });
-    expect(toolResult.content[1]?.text).toContain("# 1. Example title");
+    expect(toolResult.content[1]?.text).toContain("Title: Example title");
     expect(toolResult.content[1]?.text).toContain(
       "URL: https://example.com/article"
     );
-    expect(toolResult.content[2]?.text).toContain("# 2. Second title");
+    expect(toolResult.content[2]?.text).toContain("Title: Second title");
     expect(toolResult).not.toHaveProperty("structuredContent");
   });
 });
@@ -152,6 +191,7 @@ describe("createSearchContent", () => {
     ]);
 
     expect(content).toContain('Returned 1 search results for "example query".');
-    expect(content).toContain("1. [Brave] Example");
+    expect(content).toContain("Title: Example");
+    expect(content).toContain("Highlights: Example snippet");
   });
 });

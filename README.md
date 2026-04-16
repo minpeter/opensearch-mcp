@@ -40,7 +40,8 @@ Or with a specific version:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | string | — | Search query |
-| `max_results` | number | 5 | Max results to return (1–15) |
+| `numResults` | number | 5 | Preferred max results to return (1–15) |
+| `max_results` | number | 5 | Legacy alias for `numResults` |
 
 Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 
@@ -58,7 +59,7 @@ This project intentionally aggregates only official API paths, official hosted M
 The fallback chain is Brave → Exa MCP hosted search → Exa Search API → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. The hosted Exa MCP path is tried first so the server can use Exa's free hosted tier before consuming a configured `EXA_API_KEY`. Set `OPENSEARCH_ENABLE_EXA_MCP=false` to skip the hosted Exa MCP path entirely. If Brave or raw Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
 
 
-Returns a compact text rendering of the full result set in `content`, where each entry includes the engine, title, URL, and snippet. `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
+Returns a compact text rendering of the full result set in `content`, with each result rendered in `Title` / `URL` / `Highlights` / `Source` form. `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
 
 ### `web_fetch`
 
@@ -69,7 +70,7 @@ Returns a compact text rendering of the full result set in `content`, where each
 
 For non-disabled hosted MCP mode, `web_fetch` tries Exa's official hosted MCP fetch path first so it can use the hosted free tier. If that is unavailable and `EXA_API_KEY` is configured, it falls back to Exa's official `POST /contents` API before using the local Readability/PDF pipeline and Jina for sparse content.
 
-Single-fetch calls return one text block in `content` with the title, URL, extracted length, and extracted markdown. Batch-fetch calls return a short summary block plus one text block per fetched URL with the same metadata-first format.
+Single-fetch calls return one text block in `content` with `Title`, `URL`, `Length`, and the extracted markdown. Batch-fetch calls return a short summary block plus one text block per fetched URL with the same metadata-first format.
 
 ## Development
 
