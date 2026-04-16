@@ -3,11 +3,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import pkg from "../package.json" with { type: "json" };
-import { fetchUrlWithCache } from "./fetch.ts";
-import { searchWithRetryAndCache } from "./search.ts";
+import { fetchUrlsWithCache } from "./fetch.ts";
+import { searchResultsSchema, searchWithRetryAndCache } from "./search.ts";
 import {
   createFetchToolResult,
   createSearchToolResult,
+  getFetchMaxCharacters,
   getFetchUrls,
   getSearchResultCount,
   webSearchInputSchema,
@@ -78,8 +79,9 @@ server.registerTool(
   },
   async (input) => {
     try {
-      const results = await Promise.all(
-        getFetchUrls(input).map((url) => fetchUrlWithCache(url))
+      const results = await fetchUrlsWithCache(
+        getFetchUrls(input),
+        getFetchMaxCharacters(input)
       );
       return createFetchToolResult(results);
     } catch (error) {

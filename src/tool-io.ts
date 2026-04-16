@@ -41,6 +41,13 @@ export const webFetchInputSchema = z
       .url()
       .optional()
       .describe("Legacy single URL alias for urls."),
+    maxCharacters: z
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        "Preferred maximum extracted text length per URL for hosted Exa MCP and official Exa contents fetches. Defaults to 12000."
+      ),
   })
   .refine(({ url, urls }) => Boolean(url || urls?.length), {
     message: "Provide urls or url.",
@@ -84,6 +91,12 @@ export function getFetchUrls(
   );
 
   return [...new Set(merged)];
+}
+
+export function getFetchMaxCharacters(
+  input: z.infer<typeof webFetchInputSchema>
+): number | undefined {
+  return input.maxCharacters;
 }
 
 function createFetchContentBlock(
