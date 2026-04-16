@@ -4,7 +4,7 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). Returns title, URL, snippet, and originating engine for each result.
+- **`web_search`** — Multi-engine web search. Uses Brave → Exa → DuckDuckGo → Bing when corresponding API keys are configured, with Google scraping available as an opt-in last resort. Returns title, URL, snippet, and originating engine for each result.
 - **`web_fetch`** — Fetches a URL and converts it to markdown. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
@@ -42,7 +42,9 @@ Or with a specific version:
 | `query` | string | — | Search query |
 | `max_results` | number | 5 | Max results to return (1–15) |
 
-Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"DuckDuckGo"`, `"Google"`, or `"Bing"`.
+Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
+
+Set `BRAVE_SEARCH_API_KEY` and/or `EXA_API_KEY` to enable API-backed providers. Set `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` to append Google scraping as a last-resort fallback.
 
 ### `web_fetch`
 
