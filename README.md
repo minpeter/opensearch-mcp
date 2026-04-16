@@ -55,7 +55,17 @@ Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `
 
 This project intentionally aggregates only official API paths, official hosted MCP paths, or public web pages. It does not rely on reverse-engineered private endpoints or credential bypasses.
 
-As of April 16, 2026, Exa is the only official provider path we found that supports the exact "free first, add your own key later" flow used here: its hosted MCP endpoint works unauthenticated on the provider's free plan, and adding `EXA_API_KEY` only lifts the hosted free-plan limits. Other official search providers still require explicit provider-side auth or setup before first use — for example, Brave's official API includes free monthly credits but still requires signup plus an API key, Tavily's official MCP/API paths require OAuth or a Tavily API key even on its free plan, Google Custom Search requires both an API key and a Programmable Search Engine ID, and Microsoft's current Bing grounding integrations require Azure resource setup plus a resource key. That is why the remaining no-key fallbacks in this server stay limited to public-page scraping providers (DuckDuckGo/Bing/Google) rather than additional official provider integrations.
+As of April 16, 2026, Exa is the only official provider path we found that supports the exact "free first, add your own key later" flow used here. The comparison that led to the current fallback policy is:
+
+| Official provider path reviewed | Free without auth to start? | What the provider still requires | Why it is not the same flow as Exa hosted MCP |
+|---|---:|---|---|
+| Exa hosted MCP (`https://mcp.exa.ai/mcp`) | Yes | Nothing for the hosted free plan; `EXA_API_KEY` is optional for higher official limits | Matches this server's no-key-first, add-key-later behavior |
+| Brave Search API | No | Signup plus `BRAVE_SEARCH_API_KEY`, even though Brave includes free monthly credits | Free credits exist, but authenticated setup is still required before first use |
+| Tavily MCP / API | No | Tavily OAuth or Tavily API key, even on the free plan | Official free credits exist, but the provider still authenticates every MCP/API path |
+| Google Custom Search JSON API | No | Google API key plus Programmable Search Engine ID/config | Requires upfront auth and engine configuration, not anonymous first use |
+| Microsoft Bing grounding / custom search integrations | No | Azure resource setup plus a resource key | Requires Azure-side provisioning and billing-bound resource keys up front |
+
+That is why the remaining no-key fallbacks in this server stay limited to public-page scraping providers (DuckDuckGo/Bing/Google) rather than additional official provider integrations.
 
 The fallback chain is Brave → Exa API → Exa MCP hosted search → DuckDuckGo → Bing, with Google scraping appended only when `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true`. `BRAVE_SEARCH_API_KEY` enables Brave. `EXA_API_KEY` enables the raw Exa Search API. When `EXA_API_KEY` is absent, the server uses Exa's official hosted MCP endpoint and its free plan before falling through to scrape providers. Set `OPENSEARCH_ENABLE_EXA_MCP=false` to skip the hosted Exa MCP path. If Brave or raw Exa credentials are present but rejected, the server continues down the fallback chain instead of aborting the search.
 
