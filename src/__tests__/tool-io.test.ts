@@ -4,10 +4,11 @@ import type { FetchResult } from "../fetch.ts";
 import {
   createFetchToolResult,
   createSearchContent,
+  getFetchMaxCharacters,
   getFetchUrls,
   getSearchResultCount,
-  webSearchInputSchema,
   webFetchInputSchema,
+  webSearchInputSchema,
 } from "../tool-io.ts";
 
 function createFetchResult(overrides: Partial<FetchResult> = {}): FetchResult {
@@ -61,6 +62,15 @@ describe("webFetchInputSchema", () => {
     });
 
     expect(parsed.urls).toHaveLength(2);
+  });
+
+  it("accepts maxCharacters for batched fetch requests", () => {
+    const parsed = webFetchInputSchema.parse({
+      urls: ["https://example.com/one"],
+      maxCharacters: 4000,
+    });
+
+    expect(getFetchMaxCharacters(parsed)).toBe(4000);
   });
 });
 

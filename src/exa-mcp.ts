@@ -8,7 +8,6 @@ import {
   type ExaMcpContentItem,
   parseExaMcpContentItems,
   parseExaMcpFetchContentItems,
-  parseExaMcpFetchContentItem,
 } from "./exa-mcp-provider.ts";
 
 const EXA_MCP_TIMEOUT_MS = 8000;

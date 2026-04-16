@@ -7,10 +7,7 @@ const MAX_FETCH_URLS = 10;
 const DEFAULT_SEARCH_RESULT_COUNT = 5;
 const MAX_SEARCH_RESULTS = 15;
 
-const searchResultCountSchema = z
-  .int()
-  .positive()
-  .max(MAX_SEARCH_RESULTS);
+const searchResultCountSchema = z.int().positive().max(MAX_SEARCH_RESULTS);
 
 export interface SearchToolResultItem {
   engine: string;
@@ -21,12 +18,14 @@ export interface SearchToolResultItem {
 
 export const webSearchInputSchema = z.object({
   query: z.string().describe("Search query string."),
-  numResults: searchResultCountSchema.optional().describe(
-    "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
-  ),
-  max_results: searchResultCountSchema.optional().describe(
-    "Legacy alias for numResults. Defaults to 5. (1-15)"
-  ),
+  numResults: searchResultCountSchema
+    .optional()
+    .describe(
+      "Preferred result count to return. Mirrors Exa's numResults field. Defaults to 5. (1-15)"
+    ),
+  max_results: searchResultCountSchema
+    .optional()
+    .describe("Legacy alias for numResults. Defaults to 5. (1-15)"),
 });
 
 export const webFetchInputSchema = z
@@ -37,10 +36,7 @@ export const webFetchInputSchema = z
       .max(MAX_FETCH_URLS)
       .optional()
       .describe("Preferred batch of URLs to fetch and extract in one call."),
-    url: z
-      .url()
-      .optional()
-      .describe("Legacy single URL alias for urls."),
+    url: z.url().optional().describe("Legacy single URL alias for urls."),
     maxCharacters: z
       .int()
       .positive()

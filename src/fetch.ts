@@ -122,9 +122,7 @@ async function fetchExaApiBatch(
   const payload = exaContentsResponseSchema.parse(await response.json());
   const statusesById = new Map(
     (payload.statuses ?? [])
-      .map((status) =>
-        status.id ? ([status.id, status] as const) : null
-      )
+      .map((status) => (status.id ? ([status.id, status] as const) : null))
       .filter(
         (entry): entry is readonly [string, ExaContentsStatus] => entry !== null
       )
@@ -152,14 +150,18 @@ async function fetchExaApiBatch(
 
     const result =
       resultsByUrl.get(url) ??
-      payload.results.find((entry) => entry.text?.trim() && entry.url === url) ??
+      payload.results.find(
+        (entry) => entry.text?.trim() && entry.url === url
+      ) ??
       payload.results[index];
 
     if (!result?.text?.trim()) {
       throw new Error("Exa API fetch returned no text content");
     }
 
-    normalizedResults.push(createFetchResult(url, result.text, result.title ?? ""));
+    normalizedResults.push(
+      createFetchResult(url, result.text, result.title ?? "")
+    );
   }
 
   return normalizedResults;
@@ -188,14 +190,8 @@ async function getFallbackContent(
   return content;
 }
 
-export async function fetchUrl(url: string): Promise<FetchResult> {
-  const [result] = await fetchUrls([url]);
-
-  if (!result) {
-    throw new Error("Fetch returned no results");
-  }
-
-  return result;
+export function fetchUrl(url: string): Promise<FetchResult> {
+  return fetchUrlDirect(url);
 }
 
 async function fetchUrlDirect(url: string): Promise<FetchResult> {
@@ -274,7 +270,9 @@ export async function fetchUrls(
           exaResults.find((result) => result.url === url) ?? exaResults[index];
 
         if (!exaResult) {
-          throw new Error("Exa MCP fetch returned an unexpected response shape");
+          throw new Error(
+            "Exa MCP fetch returned an unexpected response shape"
+          );
         }
 
         return createFetchResult(url, exaResult.content, exaResult.title);
@@ -305,6 +303,11 @@ export async function fetchUrlsWithCache(
   urls: string[],
   maxCharacters?: number
 ): Promise<FetchResult[]> {
+  if (urls.length === 1 && maxCharacters === undefined) {
+    const [url] = urls;
+    return url ? [await fetchUrlWithCache(url)] : [];
+  }
+
   if (maxCharacters !== undefined) {
     return fetchUrls(urls, maxCharacters);
   }

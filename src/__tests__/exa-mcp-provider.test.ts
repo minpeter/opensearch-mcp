@@ -5,6 +5,7 @@ import {
   DEFAULT_EXA_MCP_SERVER_URL,
   parseExaMcpContentItems,
   parseExaMcpFetchContentItem,
+  parseExaMcpFetchContentItems,
   parseExaMcpFetchText,
   parseExaMcpSearchToolText,
 } from "../exa-mcp-provider.ts";
@@ -73,6 +74,40 @@ Body text.`,
       title: "Example",
       url: "https://example.com/page",
     });
+  });
+});
+
+describe("parseExaMcpFetchContentItems", () => {
+  it("parses multiple fetch blocks from text content items", () => {
+    const results = parseExaMcpFetchContentItems([
+      {
+        type: "text",
+        text: `# First
+URL: https://example.com/first
+
+First body.`,
+      },
+      {
+        type: "text",
+        text: `# Second
+URL: https://example.com/second
+
+Second body.`,
+      },
+    ]);
+
+    expect(results).toEqual([
+      {
+        content: "First body.",
+        title: "First",
+        url: "https://example.com/first",
+      },
+      {
+        content: "Second body.",
+        title: "Second",
+        url: "https://example.com/second",
+      },
+    ]);
   });
 });
 

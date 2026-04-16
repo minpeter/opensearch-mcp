@@ -11,8 +11,9 @@ import {
   getFetchMaxCharacters,
   getFetchUrls,
   getSearchResultCount,
-  webSearchInputSchema,
   webFetchInputSchema,
+  webFetchOutputSchema,
+  webSearchInputSchema,
 } from "./tool-io.ts";
 
 const server = new McpServer({
