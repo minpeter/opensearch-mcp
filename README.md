@@ -4,8 +4,10 @@ MCP server with `web_search` and `web_fetch` tools.
 
 ## Tools
 
-- **`web_search`** — Multi-engine web search. Uses Brave → Exa → DuckDuckGo → Bing when corresponding API keys are configured, with Google scraping available as an opt-in last resort. Returns title, URL, snippet, and originating engine for each result.
-- **`web_fetch`** — Fetches a URL and converts it to markdown. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
+- **`web_search`** — Multi-engine web search (DuckDuckGo → Google → Bing fallback). `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
+- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
+- **`web_search`** — Multi-engine web search. Uses Brave → Exa → DuckDuckGo → Bing when corresponding API keys are configured, with Google scraping available as an opt-in last resort. `content` returns a compact text rendering of the full result set, and `structuredContent.results` returns the same results in machine-readable form.
+- **`web_fetch`** — Fetches a URL and converts it to markdown. `content` returns the complete extracted body, and `structuredContent` returns extraction metadata. Supports HTML pages and PDFs. Falls back to [Jina AI](https://jina.ai) for sparse content.
 
 ## Usage
 
@@ -46,13 +48,15 @@ Returns an array of `{ engine, title, url, snippet }` where `engine` is one of `
 
 Set `BRAVE_SEARCH_API_KEY` and/or `EXA_API_KEY` to enable API-backed providers. Set `OPENSEARCH_ENABLE_GOOGLE_SCRAPE=true` to append Google scraping as a last-resort fallback.
 
+Returns a compact text rendering of the full result set in `content` and an array of `{ engine, title, url, snippet }` in `structuredContent.results`, where `engine` is one of `"Brave"`, `"Exa"`, `"DuckDuckGo"`, `"Bing"`, or `"Google"`.
+
 ### `web_fetch`
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `url` | string | URL to fetch |
 
-Returns `{ title, content, url, length }` where `content` is markdown.
+Returns the extracted markdown body in `content` and `{ title, url, length }` in `structuredContent`.
 
 ## Development
 
