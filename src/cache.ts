@@ -27,7 +27,7 @@ export class TtlCache<K, V> {
     return this.get(key) !== undefined;
   }
 
-  async getOrSet(key: K, factory: () => Promise<V>): Promise<V> {
+  getOrSet(key: K, factory: () => Promise<V>): Promise<V> {
     const cachedValue = this.get(key);
     if (cachedValue !== undefined) {
       return cachedValue;
