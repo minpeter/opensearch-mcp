@@ -31,6 +31,7 @@ function resetSearchEnv(): void {
   delete process.env.BRAVE_SEARCH_API_KEY;
   delete process.env.EXA_API_KEY;
   delete process.env.OPENSEARCH_ENABLE_GOOGLE_SCRAPE;
+  process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
 }
 
 describe("search", () => {
@@ -151,6 +152,34 @@ describe("search", () => {
       },
     ]);
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("continues to scrape providers when Exa auth is misconfigured", async () => {
+    process.env.EXA_API_KEY = "bad-exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 401 }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-github.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("github");
+
+    expect(results.length).toBeGreaterThan(5);
+    expect(results[0]?.engine).toBe("DuckDuckGo");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      "https://api.exa.ai/search",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-api-key": "bad-exa-key",
+        }),
+        method: "POST",
+      })
+    );
   });
 
   it("falls back when Brave returns 403", async () => {
@@ -491,6 +520,28 @@ describe("search", () => {
       "Search failed across all engines: DuckDuckGo, Bing [DuckDuckGo:blocked; Bing:transient]"
     );
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry when Exa rejects the request with payment/auth failure", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 402 }))
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("duckduckgo-challenge.html"))
+      )
+      .mockResolvedValueOnce(
+        createMockResponse(readFixture("bing-challenge.html"))
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      searchWithRetryAndCache("exa-auth-failure", 5)
+    ).rejects.toThrow(
+      "Search failed across all engines: Exa, DuckDuckGo, Bing [Exa:misconfigured; DuckDuckGo:blocked; Bing:blocked]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("throws No Results when all enabled engines explicitly return no-results", async () => {

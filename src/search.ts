@@ -3,6 +3,7 @@ import pRetry from "p-retry";
 import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
+import { searchExaMcp } from "./exa-mcp.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const SEARCH_ENGINE_NAMES = [
@@ -43,7 +44,7 @@ interface HeuristicAnchor {
 
 interface SearchProvider {
   name: SearchEngineName;
-  search(query: string): Promise<SearchResult[]>;
+  search(query: string, numResults: number): Promise<SearchResult[]>;
 }
 
 interface ScrapeSearchEngine {
@@ -222,11 +223,16 @@ const SCRAPE_SEARCH_ENGINES: Record<
 };
 
 const GOOGLE_SCRAPE_OPT_IN_ENV = "OPENSEARCH_ENABLE_GOOGLE_SCRAPE";
+const EXA_MCP_OPT_OUT_ENV = "OPENSEARCH_ENABLE_EXA_MCP";
 const BRAVE_API_KEY_ENV = "BRAVE_SEARCH_API_KEY";
 const EXA_API_KEY_ENV = "EXA_API_KEY";
 
 function isGoogleScrapeEnabled(): boolean {
   return process.env[GOOGLE_SCRAPE_OPT_IN_ENV] === "true";
+}
+
+function isExaMcpEnabled(): boolean {
+  return process.env[EXA_MCP_OPT_OUT_ENV] !== "false";
 }
 
 function getSearchProviders(): SearchProvider[] {
@@ -236,6 +242,10 @@ function getSearchProviders(): SearchProvider[] {
 
   if (braveApiKey) {
     providers.push(createBraveSearchProvider(braveApiKey));
+  }
+
+  if (isExaMcpEnabled()) {
+    providers.push(createExaMcpSearchProvider());
   }
 
   if (exaApiKey) {
@@ -252,6 +262,33 @@ function getSearchProviders(): SearchProvider[] {
   return providers;
 }
 
+function createExaMcpSearchProvider(): SearchProvider {
+  return {
+    name: "Exa",
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
+      try {
+        const results = await searchExaMcp(query, numResults);
+
+        if (results.length === 0) {
+          throw new SearchEngineError("Exa", "no-results", "No Results");
+        }
+
+        return attachEngine("Exa", results);
+      } catch (error) {
+        if (error instanceof SearchEngineError) {
+          throw error;
+        }
+
+        throw new SearchEngineError(
+          "Exa",
+          classifyExaMcpFailure(error),
+          `Exa MCP search failed: ${getErrorMessage(error)}`
+        );
+      }
+    },
+  };
+}
+
 function createScrapeSearchProvider(
   engine: ScrapeSearchEngine
 ): SearchProvider {
@@ -266,7 +303,7 @@ function createScrapeSearchProvider(
 function createBraveSearchProvider(apiKey: string): SearchProvider {
   return {
     name: "Brave",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       const response = await fetchSearchApi({
         engine: "Brave",
         init: {
@@ -280,7 +317,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         },
         url: createSearchUrl("https://api.search.brave.com/res/v1/web/search", {
-          count: "10",
+          count: String(numResults),
           q: query,
           search_lang: "en",
         }),
@@ -294,7 +331,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
 function createExaSearchProvider(apiKey: string): SearchProvider {
   return {
     name: "Exa",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       const response = await fetchSearchApi({
         engine: "Exa",
         init: {
@@ -304,7 +341,7 @@ function createExaSearchProvider(apiKey: string): SearchProvider {
                 maxCharacters: EXA_HIGHLIGHT_MAX_CHARACTERS,
               },
             },
-            numResults: 10,
+            numResults,
             query,
             type: "auto",
           }),
@@ -324,13 +361,16 @@ function createExaSearchProvider(apiKey: string): SearchProvider {
   };
 }
 
-export async function search(query: string): Promise<SearchResult[]> {
+export async function search(
+  query: string,
+  numResults = 10
+): Promise<SearchResult[]> {
   const failures: SearchEngineError[] = [];
   const providers = getSearchProviders();
 
   for (const engine of providers) {
     try {
-      return await engine.search(query);
+      return await engine.search(query, numResults);
     } catch (error) {
       if (error instanceof SearchEngineError) {
         failures.push(error);
@@ -1034,11 +1074,32 @@ function classifyApiStatusFailure(
   engine: SearchEngineName,
   status: number
 ): EngineFailureKind {
-  if ((engine === "Brave" || engine === "Exa") && status === 401) {
+  if (
+    (engine === "Brave" && status === 401) ||
+    (engine === "Exa" && (status === 401 || status === 402))
+  ) {
     return "misconfigured";
   }
 
   return classifyStatusFailure(status);
+}
+
+function classifyExaMcpFailure(error: unknown): EngineFailureKind {
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (
+    message.includes("payment required") ||
+    message.includes("invalid api key") ||
+    message.includes("unauthorized")
+  ) {
+    return "misconfigured";
+  }
+
+  if (message.includes("429") || message.includes("rate limit")) {
+    return "blocked";
+  }
+
+  return "transient";
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1110,8 +1171,10 @@ export async function searchWithRetryAndCache(
   query: string,
   maxResults: number
 ): Promise<SearchResult[]> {
-  const results = await searchCache.getOrSet(query, async () =>
-    pRetry(async () => search(query), {
+  const cacheKey = createSearchCacheKey(query, maxResults);
+
+  const results = await searchCache.getOrSet(cacheKey, async () =>
+    pRetry(async () => search(query, maxResults), {
       retries: 2,
       minTimeout: 2000,
       factor: 2,
@@ -1120,4 +1183,8 @@ export async function searchWithRetryAndCache(
   );
 
   return results.slice(0, maxResults);
+}
+
+function createSearchCacheKey(query: string, maxResults: number): string {
+  return `${query}\u0000${maxResults}`;
 }
