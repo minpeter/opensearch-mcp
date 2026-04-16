@@ -61,19 +61,20 @@ export function parseExaMcpContentItems(
 export function parseExaMcpFetchContentItem(
   content: ExaMcpContentItem[] | undefined
 ): ExaMcpFetchResult | null {
+  return parseExaMcpFetchContentItems(content)[0] ?? null;
+}
+
+export function parseExaMcpFetchContentItems(
+  content: ExaMcpContentItem[] | undefined
+): ExaMcpFetchResult[] {
   if (!content) {
-    return null;
+    return [];
   }
 
-  const firstTextItem = content.find(
-    (item) => item.type === "text" && typeof item.text === "string"
-  );
-
-  if (!firstTextItem?.text) {
-    return null;
-  }
-
-  return parseExaMcpFetchText(firstTextItem.text);
+  return content
+    .filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => parseExaMcpFetchText(item.text ?? ""))
+    .filter((result): result is ExaMcpFetchResult => result !== null);
 }
 
 export function parseExaMcpSearchToolText(text: string): ExaMcpSearchResult[] {

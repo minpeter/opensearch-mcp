@@ -7,6 +7,7 @@ import {
   DEFAULT_EXA_MCP_SEARCH_TOOL,
   type ExaMcpContentItem,
   parseExaMcpContentItems,
+  parseExaMcpFetchContentItems,
   parseExaMcpFetchContentItem,
 } from "./exa-mcp-provider.ts";
 
@@ -49,11 +50,26 @@ export function searchExaMcp(
 }
 
 export function fetchExaMcp(url: string): Promise<ExaMcpFetchResult> {
+  return fetchExaMcpBatch([url]).then((results) => {
+    const [result] = results;
+
+    if (!result) {
+      throw new Error("Exa MCP fetch returned an unexpected response shape");
+    }
+
+    return result;
+  });
+}
+
+export function fetchExaMcpBatch(
+  urls: string[],
+  maxCharacters = EXA_MCP_FETCH_MAX_CHARACTERS
+): Promise<ExaMcpFetchResult[]> {
   return withExaMcpClient([DEFAULT_EXA_MCP_FETCH_TOOL], async ({ client }) => {
     const response = await client.callTool({
       arguments: {
-        maxCharacters: EXA_MCP_FETCH_MAX_CHARACTERS,
-        urls: [url],
+        maxCharacters,
+        urls,
       },
       name: DEFAULT_EXA_MCP_FETCH_TOOL,
     });
@@ -62,15 +78,15 @@ export function fetchExaMcp(url: string): Promise<ExaMcpFetchResult> {
       throw new Error(getExaMcpErrorText(response.content));
     }
 
-    const result = parseExaMcpFetchContentItem(
+    const results = parseExaMcpFetchContentItems(
       response.content as ExaMcpContentItem[]
     );
 
-    if (!result) {
+    if (results.length === 0) {
       throw new Error("Exa MCP fetch returned an unexpected response shape");
     }
 
-    return result;
+    return results;
   });
 }
 
