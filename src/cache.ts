@@ -1,5 +1,6 @@
 export class TtlCache<K, V> {
   private readonly store = new Map<K, { value: V; expiresAt: number }>();
+  private readonly pending = new Map<K, Promise<V>>();
   private readonly ttlMs: number;
 
   constructor(ttlMs: number) {
@@ -32,8 +33,21 @@ export class TtlCache<K, V> {
       return cachedValue;
     }
 
-    const value = await factory();
-    this.set(key, value);
-    return value;
+    const pendingValue = this.pending.get(key);
+    if (pendingValue !== undefined) {
+      return pendingValue;
+    }
+
+    const valuePromise = factory()
+      .then((value) => {
+        this.set(key, value);
+        return value;
+      })
+      .finally(() => {
+        this.pending.delete(key);
+      });
+
+    this.pending.set(key, valuePromise);
+    return valuePromise;
   }
 }
