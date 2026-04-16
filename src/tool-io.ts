@@ -9,48 +9,6 @@ const MAX_SEARCH_RESULTS = 15;
 
 const searchResultCountSchema = z.int().positive().max(MAX_SEARCH_RESULTS);
 
-export const webSearchInputSchema = z
-  .object({
-    query: z.string().describe("Search query string."),
-    numResults: z
-      .int()
-      .positive()
-      .max(15)
-      .optional()
-      .describe("Preferred maximum number of results to return. (1-15)"),
-    max_results: z
-      .int()
-      .positive()
-      .max(15)
-      .optional()
-      .describe("Legacy alias for numResults. (1-15)"),
-  })
-  .transform(({ query, numResults, max_results }) => ({
-    query,
-    numResults: numResults ?? max_results ?? 5,
-  }));
-
-export const webSearchInputSchema = z
-  .object({
-    query: z.string().describe("Search query string."),
-    numResults: z
-      .int()
-      .positive()
-      .max(15)
-      .optional()
-      .describe("Preferred maximum number of results to return. (1-15)"),
-    max_results: z
-      .int()
-      .positive()
-      .max(15)
-      .optional()
-      .describe("Legacy alias for numResults. (1-15)"),
-  })
-  .transform(({ query, numResults, max_results }) => ({
-    query,
-    numResults: numResults ?? max_results ?? 5,
-  }));
-
 export interface SearchToolResultItem {
   engine: string;
   snippet: string;
