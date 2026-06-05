@@ -16,7 +16,6 @@
     "url": "git+https://github.com/minpeter/opensearch-mcp.git"
   },
   "type": "module",
-  "packageManager": "pnpm@10.0.0",
   "bin": {
     "opensearch-mcp": "out/index.js"
   },
