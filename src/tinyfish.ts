@@ -6,32 +6,28 @@ const TINYFISH_SEARCH_ENDPOINT = "https://api.search.tinyfish.ai";
 const TINYFISH_TIMEOUT_MS = 30_000;
 
 const tinyFishSearchResponseSchema = z.object({
-  page: z.number(),
-  query: z.string(),
   results: z.array(
     z.object({
-      position: z.number(),
-      site_name: z.string(),
       snippet: z.string(),
       title: z.string(),
       url: z.string(),
     })
   ),
-  total_results: z.number(),
 });
 
 const tinyFishFetchResponseSchema = z.object({
-  errors: z.array(
-    z.object({
-      error: z.string(),
-      status: z.number().optional(),
-      url: z.string(),
-    })
-  ),
+  errors: z
+    .array(
+      z.object({
+        error: z.string(),
+        status: z.number().optional(),
+        url: z.string(),
+      })
+    )
+    .default([]),
   results: z.array(
     z.object({
-      final_url: z.string(),
-      format: z.string(),
+      final_url: z.string().optional(),
       text: z.string(),
       title: z.string().optional(),
       url: z.string(),
@@ -103,12 +99,19 @@ export async function fetchTinyFishUrls(
     })
   );
   const parsed = tinyFishFetchResponseSchema.parse(response);
+  const resultsByUrl = new Map(
+    parsed.results.flatMap((result) => {
+      const entries: Array<readonly [string, (typeof parsed.results)[number]]> =
+        [[result.url, result]];
+      if (result.final_url) {
+        entries.push([result.final_url, result]);
+      }
+      return entries;
+    })
+  );
 
-  return urls.map((url, index) => {
-    const result =
-      parsed.results.find(
-        (candidate) => candidate.url === url || candidate.final_url === url
-      ) ?? parsed.results[index];
+  return urls.map((url) => {
+    const result = resultsByUrl.get(url);
 
     if (!result) {
       const error = parsed.errors.find((candidate) => candidate.url === url);

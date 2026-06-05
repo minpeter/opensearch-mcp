@@ -138,6 +138,50 @@ describe("search", () => {
     );
   });
 
+  it("limits TinyFish search results to the requested count", async () => {
+    process.env.TINYFISH_API_KEY = "tinyfish-key";
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      createMockJsonResponse({
+        results: [
+          {
+            snippet: "First result.",
+            title: "First",
+            url: "https://example.com/first",
+          },
+          {
+            snippet: "Second result.",
+            title: "Second",
+            url: "https://example.com/second",
+          },
+          {
+            snippet: "Third result.",
+            title: "Third",
+            url: "https://example.com/third",
+          },
+        ],
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("tinyfish docs", 2);
+
+    expect(results).toEqual([
+      {
+        engine: "TinyFish",
+        snippet: "First result.",
+        title: "First",
+        url: "https://example.com/first",
+      },
+      {
+        engine: "TinyFish",
+        snippet: "Second result.",
+        title: "Second",
+        url: "https://example.com/second",
+      },
+    ]);
+  });
+
   it("retries TinyFish search only on 429 with the next configured key", async () => {
     process.env.TINYFISH_API_KEY = "tf-search-1; ;tf-search-2";
 

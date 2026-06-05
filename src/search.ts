@@ -342,7 +342,7 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
 function createTinyFishSearchProvider(): SearchProvider {
   return {
     name: "TinyFish",
-    async search(query: string): Promise<SearchResult[]> {
+    async search(query: string, numResults: number): Promise<SearchResult[]> {
       let results: Awaited<ReturnType<typeof searchTinyFish>>;
 
       try {
@@ -359,7 +359,7 @@ function createTinyFishSearchProvider(): SearchProvider {
         throw new SearchEngineError("TinyFish", "no-results", "No Results");
       }
 
-      return attachEngine("TinyFish", results);
+      return attachEngine("TinyFish", results.slice(0, numResults));
     },
   };
 }

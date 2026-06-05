@@ -398,6 +398,55 @@ describe("fetchUrl", () => {
     ).toHaveLength(2);
   });
 
+  it("falls back instead of mapping a partial TinyFish batch result to the wrong URL", async () => {
+    process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
+    process.env.TINYFISH_API_KEY = "tinyfish-fetch-key";
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [
+              {
+                error: "upstream failure",
+                url: "https://example.com/one",
+              },
+            ],
+            results: [
+              {
+                text: "# TinyFish result for the second URL only",
+                url: "https://example.com/two",
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML))
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await fetchUrls([
+      "https://example.com/one",
+      "https://example.com/two",
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.content).not.toContain(
+      "TinyFish result for the second URL only"
+    );
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://api.fetch.tinyfish.ai")
+      )
+    ).toHaveLength(1);
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://example.com/")
+      )
+    ).toHaveLength(2);
+  });
+
   it("passes maxCharacters through to the official Exa contents API for batched fetches", async () => {
     process.env.EXA_API_KEY = "exa-key";
     fetchExaMcpBatch.mockRejectedValueOnce(new Error("Exa timeout"));
