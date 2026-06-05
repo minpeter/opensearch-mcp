@@ -71,6 +71,7 @@ afterEach(() => {
 beforeEach(() => {
   process.env.OPENSEARCH_ENABLE_EXA_MCP = "true";
   delete process.env.EXA_API_KEY;
+  delete process.env.TINYFISH_API_KEY;
   fetchExaMcp.mockReset();
   fetchExaMcp.mockRejectedValue(new Error("Exa MCP unavailable"));
   fetchExaMcpBatch.mockReset();
@@ -163,6 +164,155 @@ describe("fetchUrl", () => {
     });
   });
 
+  it("uses TinyFish before the official Exa contents API when configured", async () => {
+    process.env.TINYFISH_API_KEY = " tinyfish-fetch-key ";
+    process.env.EXA_API_KEY = "exa-key";
+    fetchExaMcp.mockRejectedValueOnce(new Error("Exa MCP unavailable"));
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          errors: [],
+          results: [
+            {
+              final_url: "https://example.com/article",
+              format: "markdown",
+              text: "# TinyFish body",
+              title: "TinyFish title",
+              url: "https://example.com/article",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(result).toEqual({
+      content: "# TinyFish body",
+      title: "TinyFish title",
+      url: "https://example.com/article",
+      length: "# TinyFish body".length,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.fetch.tinyfish.ai",
+      expect.objectContaining({
+        body: JSON.stringify({
+          format: "markdown",
+          image_links: false,
+          links: false,
+          urls: ["https://example.com/article"],
+        }),
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-API-Key": "tinyfish-fetch-key",
+        }),
+        method: "POST",
+      })
+    );
+  });
+
+  it("retries TinyFish fetch only on 429 with the next configured key", async () => {
+    process.env.TINYFISH_API_KEY = "tf-fetch-1; ;tf-fetch-2";
+    fetchExaMcp.mockRejectedValueOnce(new Error("Exa MCP unavailable"));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+          status: 429,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [],
+            results: [
+              {
+                final_url: "https://example.com/article",
+                format: "markdown",
+                text: "# TinyFish body",
+                url: "https://example.com/article",
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(result.content).toBe("# TinyFish body");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls.map(([, init]) => init?.headers)).toEqual([
+      expect.objectContaining({ "X-API-Key": "tf-fetch-1" }),
+      expect.objectContaining({ "X-API-Key": "tf-fetch-2" }),
+    ]);
+  });
+
+  it("falls back when TinyFish fetch returns malformed fields", async () => {
+    process.env.TINYFISH_API_KEY = "tinyfish-fetch-key";
+    process.env.EXA_API_KEY = "exa-key";
+    fetchExaMcp.mockRejectedValueOnce(new Error("Exa MCP unavailable"));
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [],
+            results: [
+              {
+                final_url: "https://example.com/article",
+                format: "markdown",
+                title: "Missing text should fail strict parsing",
+                url: "https://example.com/article",
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            results: [
+              {
+                text: "# Exa API body",
+                title: "Exa API title",
+                url: "https://example.com/article",
+              },
+            ],
+            statuses: [
+              {
+                id: "https://example.com/article",
+                status: "success",
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/article");
+
+    expect(result).toEqual({
+      content: "# Exa API body",
+      title: "Exa API title",
+      url: "https://example.com/article",
+      length: "# Exa API body".length,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   it("passes batched urls through hosted Exa MCP before per-url fallbacks", async () => {
     fetchExaMcpBatch.mockResolvedValueOnce([
       {
@@ -203,6 +353,98 @@ describe("fetchUrl", () => {
       },
     ]);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("does not retry TinyFish per URL after a TinyFish batch fallback", async () => {
+    process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
+    process.env.TINYFISH_API_KEY = "tinyfish-fetch-key";
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [],
+            results: [
+              {
+                final_url: "https://example.com/one",
+                format: "markdown",
+                title: "Missing text should fail strict parsing",
+                url: "https://example.com/one",
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML))
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await fetchUrls([
+      "https://example.com/one",
+      "https://example.com/two",
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://api.fetch.tinyfish.ai")
+      )
+    ).toHaveLength(1);
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://example.com/")
+      )
+    ).toHaveLength(2);
+  });
+
+  it("falls back instead of mapping a partial TinyFish batch result to the wrong URL", async () => {
+    process.env.OPENSEARCH_ENABLE_EXA_MCP = "false";
+    process.env.TINYFISH_API_KEY = "tinyfish-fetch-key";
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            errors: [
+              {
+                error: "upstream failure",
+                url: "https://example.com/one",
+              },
+            ],
+            results: [
+              {
+                text: "# TinyFish result for the second URL only",
+                url: "https://example.com/two",
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML))
+      .mockResolvedValueOnce(createMockResponse(ARTICLE_HTML));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await fetchUrls([
+      "https://example.com/one",
+      "https://example.com/two",
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.content).not.toContain(
+      "TinyFish result for the second URL only"
+    );
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://api.fetch.tinyfish.ai")
+      )
+    ).toHaveLength(1);
+    expect(
+      mockFetch.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://example.com/")
+      )
+    ).toHaveLength(2);
   });
 
   it("passes maxCharacters through to the official Exa contents API for batched fetches", async () => {

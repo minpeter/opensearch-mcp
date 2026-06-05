@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
 import { fetchExaMcp, fetchExaMcpBatch } from "./exa-mcp.ts";
+import { fetchTinyFishUrls, hasTinyFishApiKeys } from "./tinyfish.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const fetchResultSchema = z.object({
@@ -204,6 +205,22 @@ async function fetchUrlDirect(url: string): Promise<FetchResult> {
     }
   }
 
+  if (hasTinyFishApiKeys()) {
+    try {
+      const [tinyFishResult] = await fetchTinyFishUrls([url]);
+      if (!tinyFishResult) {
+        throw new Error("TinyFish fetch returned an unexpected response shape");
+      }
+      return createFetchResult(
+        url,
+        tinyFishResult.content,
+        tinyFishResult.title
+      );
+    } catch {
+      return fetchUrlWithoutTinyFish(url);
+    }
+  }
+
   if (process.env[EXA_API_KEY_ENV]?.trim()) {
     try {
       return await fetchExaApi(url);
@@ -212,6 +229,22 @@ async function fetchUrlDirect(url: string): Promise<FetchResult> {
     }
   }
 
+  return fetchLocalUrl(url);
+}
+
+async function fetchUrlWithoutTinyFish(url: string): Promise<FetchResult> {
+  if (process.env[EXA_API_KEY_ENV]?.trim()) {
+    try {
+      return await fetchExaApi(url);
+    } catch {
+      return fetchLocalUrl(url);
+    }
+  }
+
+  return fetchLocalUrl(url);
+}
+
+async function fetchLocalUrl(url: string): Promise<FetchResult> {
   const response = await fetch(url, {
     headers: { "User-Agent": getRandomUserAgent() },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -282,6 +315,23 @@ export async function fetchUrls(
     }
   }
 
+  if (hasTinyFishApiKeys()) {
+    try {
+      const tinyFishResults = await fetchTinyFishUrls(urls);
+      return urls.map((url, index) => {
+        const result = tinyFishResults[index];
+        if (!result) {
+          throw new Error(
+            "TinyFish fetch returned an unexpected response shape"
+          );
+        }
+        return createFetchResult(url, result.content, result.title);
+      });
+    } catch {
+      return fetchUrlsWithoutTinyFish(urls, maxCharacters);
+    }
+  }
+
   if (process.env[EXA_API_KEY_ENV]?.trim()) {
     try {
       return await fetchExaApiBatch(urls, maxCharacters);
@@ -291,6 +341,21 @@ export async function fetchUrls(
   }
 
   return Promise.all(urls.map((url) => fetchUrlDirect(url)));
+}
+
+async function fetchUrlsWithoutTinyFish(
+  urls: string[],
+  maxCharacters: number
+): Promise<FetchResult[]> {
+  if (process.env[EXA_API_KEY_ENV]?.trim()) {
+    try {
+      return await fetchExaApiBatch(urls, maxCharacters);
+    } catch {
+      return Promise.all(urls.map((url) => fetchLocalUrl(url)));
+    }
+  }
+
+  return Promise.all(urls.map((url) => fetchLocalUrl(url)));
 }
 
 const fetchCache = new TtlCache<string, FetchResult>(3 * 60 * 1000);
