@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { TtlCache } from "./cache.ts";
 import { searchExaMcp } from "./exa-mcp.ts";
+import { hasTinyFishApiKeys, searchTinyFish } from "./tinyfish.ts";
 import { getRandomUserAgent } from "./user-agents.ts";
 
 export const SEARCH_ENGINE_NAMES = [
@@ -12,6 +13,7 @@ export const SEARCH_ENGINE_NAMES = [
   "DuckDuckGo",
   "Exa",
   "Google",
+  "TinyFish",
 ] as const;
 
 type SearchEngineName = (typeof SEARCH_ENGINE_NAMES)[number];
@@ -112,6 +114,7 @@ const SEARCH_ENGINE_HOSTS: Record<SearchEngineName, string[]> = {
   DuckDuckGo: ["duckduckgo.com", "html.duckduckgo.com", "www.duckduckgo.com"],
   Exa: ["exa.ai", "api.exa.ai"],
   Google: ["google.com", "www.google.com"],
+  TinyFish: ["api.search.tinyfish.ai", "tinyfish.ai"],
 };
 
 const SEARCH_ENGINE_INTERNAL_URL_RULES: Record<
@@ -151,6 +154,10 @@ const SEARCH_ENGINE_INTERNAL_URL_RULES: Record<
       /\bmyaccount\.google\.com$/u,
       /\bpolicies\.google\.com$/u,
     ],
+  },
+  TinyFish: {
+    alwaysIgnoreHostPatterns: [],
+    ownedHostPatterns: [/\btinyfish\.ai$/u],
   },
 };
 
@@ -240,6 +247,10 @@ function getSearchProviders(): SearchProvider[] {
   const braveApiKey = process.env[BRAVE_API_KEY_ENV]?.trim();
   const exaApiKey = process.env[EXA_API_KEY_ENV]?.trim();
 
+  if (hasTinyFishApiKeys()) {
+    providers.push(createTinyFishSearchProvider());
+  }
+
   if (braveApiKey) {
     providers.push(createBraveSearchProvider(braveApiKey));
   }
@@ -324,6 +335,31 @@ function createBraveSearchProvider(apiKey: string): SearchProvider {
       });
 
       return attachEngine("Brave", parseBraveResults(response));
+    },
+  };
+}
+
+function createTinyFishSearchProvider(): SearchProvider {
+  return {
+    name: "TinyFish",
+    async search(query: string): Promise<SearchResult[]> {
+      let results: Awaited<ReturnType<typeof searchTinyFish>>;
+
+      try {
+        results = await searchTinyFish(query);
+      } catch (error) {
+        throw new SearchEngineError(
+          "TinyFish",
+          "transient",
+          `TinyFish search failed: ${getErrorMessage(error)}`
+        );
+      }
+
+      if (results.length === 0) {
+        throw new SearchEngineError("TinyFish", "no-results", "No Results");
+      }
+
+      return attachEngine("TinyFish", results);
     },
   };
 }
