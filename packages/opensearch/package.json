@@ -1,7 +1,7 @@
 {
   "$schema": "http://json.schemastore.org/package.json",
   "name": "@minpeter/opensearch",
-  "version": "0.1.5",
+  "version": "0.0.0",
   "description": "Reusable web search and fetch runtime with free-tier-first routing across official and keyless providers",
   "keywords": [
     "ai",
