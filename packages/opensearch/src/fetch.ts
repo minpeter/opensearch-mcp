@@ -14,6 +14,10 @@ export const fetchResultSchema = fetchResultSchemaValue;
 
 const fetchCache = new TtlCache<string, FetchResult>(3 * 60 * 1000);
 
+export interface FetchOptions {
+  readonly maxCharacters?: number;
+}
+
 export function fetchUrl(url: string): Promise<FetchResult> {
   return fetchUrlWithoutCache(url);
 }
@@ -53,4 +57,33 @@ export async function fetchUrlsWithCache(
   }
 
   return Promise.all(urls.map((url) => fetchUrlWithCache(url)));
+}
+
+export function fetch(
+  url: string,
+  options?: FetchOptions
+): Promise<FetchResult>;
+export function fetch(
+  urls: readonly string[],
+  options?: FetchOptions
+): Promise<FetchResult[]>;
+export async function fetch(
+  input: string | readonly string[],
+  options: FetchOptions = {}
+): Promise<FetchResult | FetchResult[]> {
+  const { maxCharacters } = options;
+
+  if (typeof input === "string") {
+    if (maxCharacters === undefined) {
+      return fetchUrlWithCache(input);
+    }
+
+    const [result] = await fetchUrlsWithCache([input], maxCharacters);
+    if (!result) {
+      throw new Error("Fetch returned no result.");
+    }
+    return result;
+  }
+
+  return fetchUrlsWithCache([...input], maxCharacters);
 }

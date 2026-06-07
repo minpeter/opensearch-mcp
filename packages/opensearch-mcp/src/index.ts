@@ -1,7 +1,4 @@
-import {
-  fetchUrlsWithCache,
-  searchWithRetryAndCache,
-} from "@minpeter/opensearch";
+import { fetch, search } from "@minpeter/opensearch";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -59,7 +56,7 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
     try {
       return createSearchToolResult(
         input.query,
-        await searchWithRetryAndCache(input.query, getSearchResultCount(input))
+        await search(input.query, getSearchResultCount(input))
       );
     } catch (error) {
       return createToolErrorResponse("web_search", "Search", error);
@@ -78,10 +75,9 @@ Returns: Clean text content and metadata from the page(s).`,
   },
   async (input) => {
     try {
-      const results = await fetchUrlsWithCache(
-        input.urls,
-        getFetchMaxCharacters(input)
-      );
+      const results = await fetch(input.urls, {
+        maxCharacters: getFetchMaxCharacters(input),
+      });
       return createFetchToolResult(results);
     } catch (error) {
       return createToolErrorResponse("web_fetch", "Fetch", error);

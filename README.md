@@ -41,13 +41,10 @@ free-tier-first provider order, fetch extraction, retry, and cache behavior live
 in the library.
 
 ```ts
-import {
-  fetchUrlsWithCache,
-  searchWithRetryAndCache,
-} from "@minpeter/opensearch";
+import { fetch, search } from "@minpeter/opensearch";
 
-const results = await searchWithRetryAndCache("TypeScript release notes", 5);
-const pages = await fetchUrlsWithCache(results.slice(0, 2).map((result) => result.url));
+const results = await search("TypeScript release notes", 5);
+const pages = await fetch(results.slice(0, 2).map((result) => result.url));
 ```
 
 ## Tool Reference

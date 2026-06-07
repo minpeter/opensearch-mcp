@@ -1,11 +1,5 @@
-export type { FetchResult } from "./fetch.ts";
-export {
-  fetchResultSchema,
-  fetchUrl,
-  fetchUrls,
-  fetchUrlsWithCache,
-  fetchUrlWithCache,
-} from "./fetch.ts";
+export type { FetchOptions, FetchResult } from "./fetch.ts";
+export { fetch, fetchResultSchema } from "./fetch.ts";
 export { SearchEngineError, SearchExecutionError } from "./search/errors.ts";
 export type {
   EngineFailureKind,
@@ -16,8 +10,7 @@ export type {
 } from "./search/types.ts";
 export {
   SEARCH_ENGINE_NAMES,
-  search,
   searchResultSchema,
   searchResultsSchema,
-  searchWithRetryAndCache,
+  searchWithRetryAndCache as search,
 } from "./search.ts";

@@ -16,6 +16,7 @@
     "directory": "packages/opensearch"
   },
   "type": "module",
+  "types": "./out/index.d.ts",
   "exports": {
     ".": {
       "types": "./out/index.d.ts",

@@ -71,7 +71,7 @@ export async function search(
 
 export async function searchWithRetryAndCache(
   query: string,
-  maxResults: number
+  maxResults = 10
 ): Promise<SearchResult[]> {
   const cacheKey = createSearchCacheKey(query, maxResults);
 
