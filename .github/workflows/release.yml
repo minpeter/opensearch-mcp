@@ -39,7 +39,7 @@ jobs:
       - name: Create Release PR or Publish
         uses: changesets/action@v1
         with:
-          publish: pnpm changeset publish --provenance --access public
+          publish: pnpm changeset publish
           title: 'chore: release'
           commit: 'chore: release'
         env:
