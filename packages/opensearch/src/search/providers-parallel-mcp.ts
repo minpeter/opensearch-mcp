@@ -1,0 +1,48 @@
+import { searchParallelMcp } from "../parallel-mcp.ts";
+import { getErrorMessage, SearchEngineError } from "./errors.ts";
+import { attachEngine } from "./text.ts";
+import type { EngineFailureKind, SearchProvider } from "./types.ts";
+
+export function createParallelMcpSearchProvider(): SearchProvider {
+  return {
+    name: "Parallel",
+    async search(query: string, numResults: number) {
+      try {
+        const results = await searchParallelMcp(query);
+        if (results.length === 0) {
+          throw new SearchEngineError("Parallel", "no-results", "No Results");
+        }
+
+        return attachEngine("Parallel", results).slice(0, numResults);
+      } catch (error) {
+        if (error instanceof SearchEngineError) {
+          throw error;
+        }
+
+        throw new SearchEngineError(
+          "Parallel",
+          classifyParallelMcpFailure(error),
+          `Parallel MCP search failed: ${getErrorMessage(error)}`
+        );
+      }
+    },
+  };
+}
+
+function classifyParallelMcpFailure(error: unknown): EngineFailureKind {
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (
+    message.includes("invalid api key") ||
+    message.includes("payment required") ||
+    message.includes("unauthorized")
+  ) {
+    return "misconfigured";
+  }
+
+  if (message.includes("429") || message.includes("rate limit")) {
+    return "blocked";
+  }
+
+  return "transient";
+}

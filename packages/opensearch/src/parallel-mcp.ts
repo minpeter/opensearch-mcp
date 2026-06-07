@@ -1,0 +1,118 @@
+import { randomUUID } from "node:crypto";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+import {
+  DEFAULT_PARALLEL_MCP_SEARCH_TOOL,
+  DEFAULT_PARALLEL_MCP_SERVER_URL,
+  parseParallelMcpContentItems,
+  parseParallelMcpPayload,
+} from "./parallel-mcp-provider.ts";
+import { getErrorMessage } from "./search/errors.ts";
+
+const PARALLEL_MCP_TIMEOUT_MS = 8000;
+const PARALLEL_MCP_SESSION_ID = `opensearch_${randomUUID().replaceAll("-", "")}`;
+
+export interface ParallelMcpSearchResult {
+  readonly snippet: string;
+  readonly title: string;
+  readonly url: string;
+}
+
+export function searchParallelMcp(
+  query: string
+): Promise<ParallelMcpSearchResult[]> {
+  return withParallelMcpClient(async ({ client }) => {
+    const response = await client.callTool({
+      arguments: {
+        objective: query,
+        search_queries: [query],
+        session_id: PARALLEL_MCP_SESSION_ID,
+      },
+      name: DEFAULT_PARALLEL_MCP_SEARCH_TOOL,
+    });
+
+    if (response.isError) {
+      throw new Error(getMcpErrorText(response.content));
+    }
+
+    const structuredResults = parseParallelMcpPayload(
+      response.structuredContent
+    );
+    const results =
+      structuredResults.length > 0
+        ? structuredResults
+        : parseParallelMcpContentItems(response.content);
+
+    if (results.length === 0) {
+      throw new Error("Parallel MCP search returned an unexpected shape");
+    }
+
+    return results.map(({ engine: _engine, ...result }) => result);
+  });
+}
+
+async function withParallelMcpClient<T>(
+  run: (context: { readonly client: Client }) => Promise<T>
+): Promise<T> {
+  const client = new Client({
+    name: "opensearch-parallel-mcp-client",
+    version: "0.1.0",
+  });
+  const transport = new StreamableHTTPClientTransport(
+    new URL(DEFAULT_PARALLEL_MCP_SERVER_URL),
+    {
+      fetch: fetchParallelMcp,
+      requestInit: createParallelMcpRequestInit(),
+    }
+  );
+
+  try {
+    await client.connect(transport);
+    return await run({ client });
+  } finally {
+    await transport.close().catch(() => undefined);
+  }
+}
+
+export function createParallelMcpRequestInit(): RequestInit {
+  return {
+    headers: createAuthHeaders(),
+    redirect: "manual",
+    signal: AbortSignal.timeout(PARALLEL_MCP_TIMEOUT_MS),
+  };
+}
+
+export function fetchParallelMcp(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    redirect: init?.redirect ?? "manual",
+  });
+}
+
+function createAuthHeaders(): Record<string, string> | undefined {
+  const apiKey = process.env.PARALLEL_API_KEY?.trim();
+  if (!apiKey) {
+    return;
+  }
+
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
+function getMcpErrorText(content: unknown): string {
+  const parsedContent = Array.isArray(content) ? content : [];
+  const text = parsedContent
+    .filter(
+      (item): item is { readonly text?: string; readonly type?: string } =>
+        typeof item === "object" && item !== null
+    )
+    .filter((item) => item.type === "text")
+    .map((item) => item.text ?? "")
+    .join("\n")
+    .trim();
+
+  return text || `Parallel MCP search failed: ${getErrorMessage(content)}`;
+}

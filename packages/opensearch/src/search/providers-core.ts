@@ -1,0 +1,129 @@
+import { z } from "zod";
+
+import { hasTinyFishApiKeys } from "../tinyfish/api-key-pool.ts";
+import { searchTinyFish } from "../tinyfish/search.ts";
+import { getRandomUserAgent } from "../user-agents.ts";
+import { getErrorMessage, SearchEngineError } from "./errors.ts";
+import {
+  createSearchUrl,
+  fetchSearchText,
+  parseJsonResponse,
+  REQUEST_TIMEOUT_MS,
+} from "./http.ts";
+import { attachEngine, dedupeResults, normalizeResult } from "./text.ts";
+import type { ParsedResult, SearchProvider } from "./types.ts";
+
+const braveResponseSchema = z.object({
+  web: z
+    .object({
+      results: z.array(
+        z.object({
+          description: z.string().optional(),
+          snippet: z.string().optional(),
+          title: z.string().optional(),
+          url: z.string().optional(),
+        })
+      ),
+    })
+    .optional(),
+});
+
+export function createTinyFishSearchProvider(): SearchProvider | null {
+  if (!hasTinyFishApiKeys()) {
+    return null;
+  }
+
+  return {
+    name: "TinyFish",
+    async search(query: string, numResults: number) {
+      let results: Awaited<ReturnType<typeof searchTinyFish>>;
+
+      try {
+        results = await searchTinyFish(query);
+      } catch (error) {
+        throw new SearchEngineError(
+          "TinyFish",
+          "transient",
+          `TinyFish search failed: ${getErrorMessage(error)}`
+        );
+      }
+
+      if (results.length === 0) {
+        throw new SearchEngineError("TinyFish", "no-results", "No Results");
+      }
+
+      return attachEngine("TinyFish", results.slice(0, numResults));
+    },
+  };
+}
+
+export function createBraveSearchProvider(): SearchProvider | null {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY?.trim();
+  if (!apiKey) {
+    return null;
+  }
+
+  return {
+    name: "Brave",
+    async search(query: string, numResults: number) {
+      const response = await fetchSearchText({
+        authFailureStatuses: new Set([401]),
+        engine: "Brave",
+        init: {
+          headers: {
+            Accept: "application/json",
+            "Accept-Encoding": "gzip",
+            "User-Agent": getRandomUserAgent(),
+            "X-Subscription-Token": apiKey,
+          },
+          method: "GET",
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        },
+        url: createSearchUrl("https://api.search.brave.com/res/v1/web/search", {
+          count: String(numResults),
+          q: query,
+          search_lang: "en",
+        }),
+      });
+
+      return attachEngine("Brave", parseBraveResults(response));
+    },
+  };
+}
+
+function parseBraveResults(responseBody: string): ParsedResult[] {
+  const parsed = braveResponseSchema.safeParse(
+    parseJsonResponse(responseBody, "Brave")
+  );
+  if (!parsed.success) {
+    throw new SearchEngineError(
+      "Brave",
+      "transient",
+      "Brave returned an unexpected response shape"
+    );
+  }
+
+  if (!parsed.data.web) {
+    throw new SearchEngineError(
+      "Brave",
+      "transient",
+      "Brave returned an unexpected response shape"
+    );
+  }
+
+  const results = parsed.data.web.results
+    .map((item) =>
+      normalizeResult({
+        snippet: item.description ?? item.snippet ?? "",
+        title: item.title ?? "",
+        url: item.url ?? "",
+      })
+    )
+    .filter((result): result is ParsedResult => result !== null);
+
+  if (results.length === 0) {
+    throw new SearchEngineError("Brave", "no-results", "No Results");
+  }
+
+  return dedupeResults(results);
+}
