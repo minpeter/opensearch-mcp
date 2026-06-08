@@ -1,5 +1,11 @@
 # @minpeter/opensearch
 
+## 0.0.1
+
+### Patch Changes
+
+- 2c1ad5d: Organize provider implementations under consistent provider folders.
+
 ## 0.0.0
 
 ### Minor Changes
