@@ -4,6 +4,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import pkg from "../package.json" with { type: "json" };
 import {
+  webFetchDescription,
+  webSearchDescription,
+} from "./tool-descriptions.ts";
+import {
   createFetchToolResult,
   createSearchToolResult,
   getFetchMaxCharacters,
@@ -38,14 +42,7 @@ function createToolErrorResponse(
 server.registerTool(
   "web_search",
   {
-    description: `Search the web for any topic and get clean, ready-to-use content.
-
-Best for: Finding current information, news, facts, people, companies, or answering questions about any topic.
-Returns: Clean text content from top search results.
-
-Query tips:
-describe the ideal page, not keywords. "blog post comparing React and Vue performance" not "React vs Vue".
-If highlights are insufficient, follow up with web_fetch on the best URLs.`,
+    description: webSearchDescription,
     inputSchema: webSearchInputSchema,
   },
   async (input) => {
@@ -65,10 +62,7 @@ If highlights are insufficient, follow up with web_fetch on the best URLs.`,
 server.registerTool(
   "web_fetch",
   {
-    description: `Read a webpage's full content as clean markdown. Use after web_search when highlights are insufficient or to read any URL.
-
-Best for: Extracting full content from known URLs. Batch multiple URLs in one call.
-Returns: Clean text content and metadata from the page(s).`,
+    description: webFetchDescription,
     inputSchema: webFetchInputSchema,
   },
   async (input) => {

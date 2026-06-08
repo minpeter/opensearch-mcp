@@ -2,7 +2,7 @@
   "$schema": "http://json.schemastore.org/package.json",
   "name": "opensearch-workspace",
   "private": true,
-  "description": "Zero-config web search and fetch MCP with free-tier-first routing across official providers",
+  "description": "Zero-config web search and page fetch for MCP clients",
   "license": "MIT",
   "packageManager": "pnpm@11.3.0",
   "repository": {
