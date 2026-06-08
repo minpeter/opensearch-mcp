@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import { webSearchDescription } from "../tool-descriptions.ts";
 import { createFetchToolResult, createSearchToolResult } from "../tool-io.ts";
 
 describe("tool result shaping", () => {
+  it("describes web_search as ranked results rather than full page content", () => {
+    expect(webSearchDescription).toContain("ranked search results");
+    expect(webSearchDescription).toContain("titles, URLs, highlights");
+    expect(webSearchDescription).toContain(
+      "Follow promising URLs with web_fetch"
+    );
+    expect(webSearchDescription).not.toContain("ready-to-use content");
+    expect(webSearchDescription).not.toContain(
+      "Clean text content from top search results"
+    );
+  });
+
   it("renders search results as Exa-style text without structured output", () => {
     const results = [
       {
