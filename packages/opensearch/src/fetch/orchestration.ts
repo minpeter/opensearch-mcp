@@ -19,6 +19,7 @@ import {
 } from "./config.ts";
 import { fetchExaApiBatchWithPool } from "./exa-api.ts";
 import { fetchLocalUrl } from "./local.ts";
+import { fetchViaPublicApi } from "./public-api.ts";
 import { createFetchResult, type FetchResult } from "./result.ts";
 
 export interface FetchOperations {
@@ -58,6 +59,19 @@ export function fetchUrl(url: string): Promise<FetchResult> {
 }
 
 async function fetchUrlDirect(
+  url: string,
+  context: FetchPipelineContext
+): Promise<FetchResult> {
+  // Phase 0: official keyless APIs for platforms generic fetch handles poorly
+  // (matches only specific URLs; non-matching URLs cost nothing).
+  const apiResult = await fetchViaPublicApi(url);
+  if (apiResult) {
+    return apiResult;
+  }
+  return fetchUrlViaProviders(url, context);
+}
+
+async function fetchUrlViaProviders(
   url: string,
   context: FetchPipelineContext
 ): Promise<FetchResult> {
