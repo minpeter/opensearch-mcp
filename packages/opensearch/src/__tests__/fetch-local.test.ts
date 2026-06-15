@@ -134,6 +134,28 @@ describe("fetchUrl PDF extraction", () => {
 
     expect(result.content).toBe(fakeText);
   });
+
+  it("PDF-extracts a variant served after the origin is blocked", async () => {
+    const pdfText = "VARIANT PDF TEXT extracted from the mobile host.";
+    vi.mocked(getDocumentProxy).mockResolvedValue(createMockPdfDocument());
+    vi.mocked(extractText).mockResolvedValue({ text: pdfText, totalPages: 1 });
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(new ArrayBuffer(100), {
+          headers: { "Content-Type": "application/pdf" },
+          status: 200,
+        })
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/doc.pdf");
+
+    expect(result.content).toBe(pdfText);
+    expect(extractText).toHaveBeenCalled();
+  });
 });
 
 describe("fetchUrl Jina fallback", () => {
@@ -263,6 +285,19 @@ describe("fetchUrl challenge / block escalation", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(fetchUrl("https://example.com/cf-hard")).rejects.toThrow(
+      "anti-bot challenge"
+    );
+  });
+
+  it("rejects a too-short reader body on the blocked path", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(new Response("x", { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(fetchUrl("https://example.com/forbidden2")).rejects.toThrow(
       "anti-bot challenge"
     );
   });

@@ -37,6 +37,25 @@ describe("extractMetadata", () => {
     );
     expect(extractMetadata(dom).title).toBe("Graph Title");
   });
+
+  it("prefers the Article node over a thin WebPage node in the same @graph", () => {
+    const graph = JSON.stringify({
+      "@graph": [
+        { "@type": "WebPage", name: "Site Section" },
+        {
+          "@type": "Article",
+          author: { name: "Real Author" },
+          headline: "Real Headline",
+        },
+      ],
+    });
+    const dom = new JSDOM(
+      `<html><head><script type="application/ld+json">${graph}</script></head><body></body></html>`
+    );
+    const meta = extractMetadata(dom);
+    expect(meta.title).toBe("Real Headline");
+    expect(meta.author).toBe("Real Author");
+  });
 });
 
 describe("metadataToMarkdown", () => {

@@ -13,13 +13,14 @@ export interface PageMetadata {
   readonly title: string;
 }
 
+// Content types only — "webpage" is excluded: Yoast-style @graph pages carry a
+// thin WebPage node plus a rich Article node, and we want the Article's fields.
 const ARTICLE_LD_TYPES = new Set([
   "article",
   "newsarticle",
   "blogposting",
   "techarticle",
   "report",
-  "webpage",
 ]);
 
 type MetaDoc = JSDOM["window"]["document"];
@@ -79,7 +80,14 @@ function ldType(record: Record<string, unknown>): string[] {
   return [];
 }
 
+function ldString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function fromJsonLd(doc: MetaDoc): Partial<PageMetadata> {
+  // Merge across every matching record (first non-empty value per field), so a
+  // thin record never shadows a richer one in the same @graph.
+  const merged = { author: "", description: "", published: "", title: "" };
   const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
   for (const script of Array.from(scripts)) {
     let parsed: unknown;
@@ -92,19 +100,13 @@ function fromJsonLd(doc: MetaDoc): Partial<PageMetadata> {
       if (!ldType(record).some((type) => ARTICLE_LD_TYPES.has(type))) {
         continue;
       }
-      return {
-        author: asName(record.author),
-        description:
-          typeof record.description === "string"
-            ? record.description.trim()
-            : "",
-        published:
-          typeof record.datePublished === "string" ? record.datePublished : "",
-        title: asName(record.headline ?? record.name),
-      };
+      merged.title ||= asName(record.headline ?? record.name);
+      merged.description ||= ldString(record.description);
+      merged.author ||= asName(record.author);
+      merged.published ||= ldString(record.datePublished);
     }
   }
-  return {};
+  return merged;
 }
 
 export function extractMetadata(dom: JSDOM): PageMetadata {

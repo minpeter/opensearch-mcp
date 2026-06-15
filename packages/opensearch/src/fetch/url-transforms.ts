@@ -12,6 +12,9 @@ const WWW_PREFIX = "www.";
 function withHost(url: URL, host: string): string {
   const next = new URL(url.toString());
   next.hostname = host;
+  // Never carry Basic-auth credentials across to a different host.
+  next.username = "";
+  next.password = "";
   return next.toString();
 }
 

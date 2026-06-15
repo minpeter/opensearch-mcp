@@ -67,14 +67,43 @@ async function fetchJina(url: string): Promise<string | null> {
 }
 
 /** Retry a blocked origin on its mobile/apex host variants; null if all fail. */
-async function fetchHtmlViaVariants(url: string): Promise<string | null> {
+function isPdf(url: string, contentType: string): boolean {
+  return url.endsWith(".pdf") || contentType.includes("application/pdf");
+}
+
+/**
+ * Turn a successful (2xx) response into a result. PDFs (by extension or
+ * Content-Type) are text-extracted; HTML is parsed. Returns null when the body
+ * is a WAF challenge so the caller escalates. `url` is the identity to report,
+ * which may differ from the variant the body came from.
+ */
+async function resultFromResponse(
+  url: string,
+  response: Response
+): Promise<FetchResult | null> {
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (isPdf(url, contentType)) {
+    return createFetchResult(
+      url,
+      await extractPdfContent(await response.arrayBuffer())
+    );
+  }
+  const raw = await response.text();
+  if (isChallengePage(raw)) {
+    return null;
+  }
+  return buildResultFromHtml(url, raw);
+}
+
+/** Retry a blocked origin on its mobile/apex host variants. */
+async function fetchViaVariants(url: string): Promise<FetchResult | null> {
   for (const variant of transformedUrls(url)) {
     try {
       const response = await fetchPage(variant);
       if (response.ok) {
-        const html = await response.text();
-        if (!isChallengePage(html)) {
-          return html;
+        const result = await resultFromResponse(url, response);
+        if (result) {
+          return result;
         }
       }
     } catch {
@@ -82,26 +111,6 @@ async function fetchHtmlViaVariants(url: string): Promise<string | null> {
     }
   }
   return null;
-}
-
-/**
- * Resolve usable HTML from the initial response, or null when the origin is
- * blocked/challenged and no URL variant works (caller then tries the reader).
- * Throws on hard, non-block errors (404, 500, …) as before.
- */
-async function obtainHtml(
-  url: string,
-  response: Response
-): Promise<string | null> {
-  if (response.ok) {
-    const raw = await response.text();
-    if (!isChallengePage(raw)) {
-      return raw;
-    }
-  } else if (!BLOCK_STATUSES.has(response.status)) {
-    throw new Error(`Fetch failed with status ${response.status}`);
-  }
-  return fetchHtmlViaVariants(url);
 }
 
 function createTurndown(): TurndownService {
@@ -157,25 +166,30 @@ async function buildResultFromHtml(
 export async function fetchLocalUrl(url: string): Promise<FetchResult> {
   const response = await fetchPage(url);
 
-  const contentType = response.headers.get("Content-Type") ?? "";
-  if (
-    response.ok &&
-    (url.endsWith(".pdf") || contentType.includes("application/pdf"))
-  ) {
-    const extractedText = await extractPdfContent(await response.arrayBuffer());
-    return createFetchResult(url, extractedText);
-  }
-
-  // HTTP 200 is not success: a WAF interstitial would otherwise become markdown.
-  // obtainHtml returns null when blocked with no working variant — try the reader.
-  const html = await obtainHtml(url, response);
-  if (html === null) {
-    const reader = await fetchJina(url);
-    if (reader) {
-      return createFetchResult(url, reader);
+  if (response.ok) {
+    // HTTP 200 is not success: resultFromResponse returns null for a WAF
+    // challenge body so we escalate instead of ingesting the interstitial.
+    const result = await resultFromResponse(url, response);
+    if (result) {
+      return result;
     }
-    throw new Error("Fetch blocked by an anti-bot challenge");
+  } else if (!BLOCK_STATUSES.has(response.status)) {
+    throw new Error(`Fetch failed with status ${response.status}`);
   }
 
-  return buildResultFromHtml(url, html);
+  // Blocked or challenged — try URL variants, then the reader.
+  const variantResult = await fetchViaVariants(url);
+  if (variantResult) {
+    return variantResult;
+  }
+
+  const reader = await fetchJina(url);
+  if (
+    reader &&
+    reader.length >= SPARSE_CONTENT_THRESHOLD &&
+    !isChallengePage(reader)
+  ) {
+    return createFetchResult(url, reader);
+  }
+  throw new Error("Fetch blocked by an anti-bot challenge");
 }

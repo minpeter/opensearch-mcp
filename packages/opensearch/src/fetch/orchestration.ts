@@ -157,6 +157,41 @@ async function fetchUrlsDirect(
     return [];
   }
 
+  // Phase 0 (parity with single fetch): route official-API URLs first, send the
+  // rest through the provider batch, then reassemble in the original order.
+  const apiResults = await Promise.all(
+    urls.map((url) => fetchViaPublicApi(url))
+  );
+  const remaining = urls.filter((_url, index) => apiResults[index] === null);
+  if (remaining.length === urls.length) {
+    return fetchUrlsViaProviders(urls, maxCharacters, context);
+  }
+
+  const remainingResults =
+    remaining.length > 0
+      ? await fetchUrlsViaProviders(remaining, maxCharacters, context)
+      : [];
+  const merged: FetchResult[] = [];
+  let cursor = 0;
+  for (const api of apiResults) {
+    if (api) {
+      merged.push(api);
+      continue;
+    }
+    const next = remainingResults[cursor];
+    cursor += 1;
+    if (next) {
+      merged.push(next);
+    }
+  }
+  return merged;
+}
+
+async function fetchUrlsViaProviders(
+  urls: string[],
+  maxCharacters: number,
+  context: FetchPipelineContext
+): Promise<FetchResult[]> {
   if (isExaMcpEnabled(context.env)) {
     try {
       const exaResults = await fetchExaMcpBatchForEnv(

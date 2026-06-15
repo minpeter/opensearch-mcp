@@ -24,4 +24,15 @@ describe("transformedUrls", () => {
     expect(transformedUrls("ftp://example.com")).toEqual([]);
     expect(transformedUrls("not a url")).toEqual([]);
   });
+
+  it("strips embedded Basic-auth credentials from variants", () => {
+    const variants = transformedUrls("https://user:pass@www.example.com/a");
+    expect(variants).toEqual([
+      "https://m.example.com/a",
+      "https://example.com/a",
+    ]);
+    expect(variants.some((u) => u.includes("user") || u.includes("pass"))).toBe(
+      false
+    );
+  });
 });
