@@ -204,3 +204,61 @@ describe("fetchUrl Jina fallback", () => {
     expect(result.content).not.toContain("fallback error");
   });
 });
+
+describe("fetchUrl challenge / block escalation", () => {
+  it("escalates a 200 anti-bot challenge page to the Jina reader", async () => {
+    const challengeHtml =
+      "<html><head><title>Just a moment...</title></head><body>Enable JavaScript and cookies to continue</body></html>";
+    const jina =
+      "Real readable content recovered by the Jina reader, long enough to be kept.";
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(challengeHtml, {
+          headers: { "Content-Type": "text/html" },
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(new Response(jina, { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/cf");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toMatch(JINA_URL_REGEX);
+    expect(result.content).toBe(jina);
+  });
+
+  it("escalates a 403 block status to the Jina reader", async () => {
+    const jina =
+      "Reader content recovered after a 403 from the origin, kept because it is long enough.";
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }))
+      .mockResolvedValueOnce(new Response(jina, { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await fetchUrl("https://example.com/forbidden");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toMatch(JINA_URL_REGEX);
+    expect(result.content).toBe(jina);
+  });
+
+  it("throws when a challenge page cannot be recovered via Jina", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("<html>cf-chl-bypass</html>", {
+          headers: { "Content-Type": "text/html" },
+          status: 200,
+        })
+      )
+      .mockRejectedValueOnce(new Error("Jina down"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(fetchUrl("https://example.com/cf-hard")).rejects.toThrow(
+      "anti-bot challenge"
+    );
+  });
+});
