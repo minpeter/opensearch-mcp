@@ -1,5 +1,16 @@
 # @minpeter/opensearch
 
+## 0.0.1
+
+### Patch Changes
+
+- 2c1ad5d: Organize provider implementations under consistent provider folders.
+- c74bdfb: Remove unreliable keyless Bing, Startpage, Webcrawler, and augmented-Bing fallbacks from the public search engine surface, and move DuckDuckGo into the Node runtime entrypoint as the final keyless fallback.
+
+  Update the MCP server to import the Node runtime entrypoint so `web_search` keeps the DuckDuckGo fallback.
+
+- c74bdfb: Address PR review findings in the fetch resilience pipeline: stop routing legal (HTTP 451) blocks through the third-party reader so legal takedowns surface as errors, and recognize apex domains under compound TLDs (e.g. `example.co.uk`, `example.com.au`) when generating mobile/apex retry variants.
+
 ## 0.0.0
 
 ### Minor Changes
