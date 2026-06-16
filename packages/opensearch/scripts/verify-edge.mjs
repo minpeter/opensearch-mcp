@@ -24,6 +24,13 @@ const BANNED_INPUTS = [
   /\/duckduckgo\.[cm]?js$/,
 ];
 
+const BANNED_GLOBAL_PATTERNS = [
+  {
+    name: "Buffer",
+    pattern: /\bBuffer\b/,
+  },
+];
+
 const STATIC_IMPORT_KINDS = new Set(["import-statement", "require-call"]);
 
 const result = await build({
@@ -44,6 +51,11 @@ const heavyLeaks = inputs.filter((path) =>
   BANNED_INPUTS.some((pattern) => pattern.test(path))
 );
 
+const bundledCode = result.outputFiles.map((file) => file.text).join("\n");
+const globalLeaks = BANNED_GLOBAL_PATTERNS.filter(({ pattern }) =>
+  pattern.test(bundledCode)
+).map(({ name }) => name);
+
 const staticNodeLeaks = [];
 for (const [file, info] of Object.entries(result.metafile.inputs)) {
   for (const imported of info.imports ?? []) {
@@ -56,7 +68,11 @@ for (const [file, info] of Object.entries(result.metafile.inputs)) {
   }
 }
 
-if (heavyLeaks.length > 0 || staticNodeLeaks.length > 0) {
+if (
+  heavyLeaks.length > 0 ||
+  staticNodeLeaks.length > 0 ||
+  globalLeaks.length > 0
+) {
   console.error("EDGE LEAK: out/index.js is not Cloudflare Workers-safe:");
   for (const path of heavyLeaks) {
     console.error(`  heavy dependency bundled: ${path}`);
@@ -64,10 +80,13 @@ if (heavyLeaks.length > 0 || staticNodeLeaks.length > 0) {
   for (const leak of staticNodeLeaks) {
     console.error(`  static node: import: ${leak}`);
   }
+  for (const leak of globalLeaks) {
+    console.error(`  node global referenced: ${leak}`);
+  }
   process.exit(1);
 }
 
 console.log(
   `edge entry clean: ${inputs.length} modules bundled under [workerd,worker,browser] - ` +
-    "no jsdom / unpdf / turndown / readability / undici / local / duckduckgo and no static node: imports."
+    "no jsdom / unpdf / turndown / readability / undici / local / duckduckgo, no static node: imports, and no node globals."
 );

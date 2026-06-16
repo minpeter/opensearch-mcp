@@ -66,16 +66,19 @@ block followed by one text block per URL.
 
 ## Client API
 
-The library exports three stable entry points:
+The root entry is edge-safe and uses configured API/hosted MCP providers only.
+Use the `/node` entry when you want the full Node runtime with DuckDuckGo and
+local page-fetch fallbacks.
 
 ```ts
 import { createOpenSearch, fetch, search } from "@minpeter/opensearch";
+import { fetch as nodeFetch } from "@minpeter/opensearch/node";
 
 const results = await search("TypeScript 6 release notes", 5);
 const first = results[0];
 
 if (first) {
-  const page = await fetch(first.url);
+  const page = await nodeFetch(first.url);
   console.log(page.title, page.length);
 }
 
