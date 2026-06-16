@@ -15,8 +15,18 @@ describe("transformedUrls", () => {
     ]);
   });
 
+  it("treats an apex under a compound TLD as apex, not a subdomain", () => {
+    expect(transformedUrls("https://example.co.uk/a")).toEqual([
+      "https://m.example.co.uk/a",
+    ]);
+    expect(transformedUrls("https://example.com.au/a")).toEqual([
+      "https://m.example.com.au/a",
+    ]);
+  });
+
   it("skips deep subdomains and hosts already on m.", () => {
     expect(transformedUrls("https://docs.example.com/a")).toEqual([]);
+    expect(transformedUrls("https://docs.example.co.uk/a")).toEqual([]);
     expect(transformedUrls("https://m.example.com/a")).toEqual([]);
   });
 

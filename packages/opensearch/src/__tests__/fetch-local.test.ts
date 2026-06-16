@@ -128,6 +128,7 @@ describe("fetchUrl challenge / block escalation", () => {
     const result = await fetchUrl("https://example.com/forbidden");
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toContain("m.example.com");
     expect(String(mockFetch.mock.calls[2]?.[0])).toMatch(JINA_URL_REGEX);
     expect(result.content).toBe(jina);
   });

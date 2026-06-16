@@ -96,6 +96,8 @@ describe("fetchUrl PDF extraction", () => {
     const result = await fetchUrl("https://example.com/doc.pdf");
 
     expect(result.content).toBe(pdfText);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[1]?.[0])).toContain("m.example.com");
     expect(extractText).toHaveBeenCalled();
   });
 });

@@ -17,9 +17,11 @@ const FETCH_TIMEOUT_MS = 30_000;
 const IMG_TAG_REGEX = /<img[^>]*>/g;
 const JINA_TIMEOUT_MS = 10_000;
 const SPARSE_CONTENT_THRESHOLD = 50;
-// Statuses that signal a block/throttle rather than a hard error — worth a
-// URL-variant + reader-fallback attempt before giving up.
-const BLOCK_STATUSES = new Set([403, 429, 451, 503]);
+// Statuses that signal a soft block/throttle worth a URL-variant + reader
+// fallback before giving up. 451 (Unavailable For Legal Reasons) is deliberately
+// excluded: a legal takedown should surface as an error, not be routed around
+// via the third-party reader.
+const BLOCK_STATUSES = new Set([403, 429, 503]);
 
 function buildRequestHeaders(url: string): Record<string, string> {
   const headers: Record<string, string> = {

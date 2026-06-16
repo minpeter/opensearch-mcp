@@ -58,6 +58,7 @@ describe("createDuckDuckGoProvider", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     resetSearchEnv();
   });
 

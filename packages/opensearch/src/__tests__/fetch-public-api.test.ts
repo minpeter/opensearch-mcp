@@ -39,6 +39,7 @@ describe("fetchViaPublicApi", () => {
       "https://www.reddit.com/r/rust/comments/abc/title/"
     );
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(String(mockFetch.mock.calls[0]?.[0])).toBe(
       "https://www.reddit.com/r/rust/comments/abc/title.json"
     );
@@ -62,6 +63,7 @@ describe("fetchViaPublicApi", () => {
       "https://news.ycombinator.com/item?id=12345"
     );
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(String(mockFetch.mock.calls[0]?.[0])).toContain(
       "hacker-news.firebaseio.com/v0/item/12345.json"
     );

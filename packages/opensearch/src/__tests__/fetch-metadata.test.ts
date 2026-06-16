@@ -27,6 +27,7 @@ describe("extractMetadata", () => {
     );
     const meta = extractMetadata(dom);
     expect(meta.title).toBe("LD Headline");
+    expect(meta.description).toBe("LD desc");
     expect(meta.author).toBe("Bob");
     expect(meta.published).toBe("2026-01-01");
   });
@@ -67,9 +68,7 @@ describe("metadataToMarkdown", () => {
       siteName: "S",
       title: "T",
     });
-    expect(md).toContain("# T");
-    expect(md).toContain("By A");
-    expect(md).toContain("D");
+    expect(md).toBe("# T\n\n_By A · 2026 · S_\n\nD");
   });
 
   it("is empty when there is no metadata", () => {
