@@ -17,30 +17,44 @@ import {
   EXA_API_KEY_ENV,
   OPENSEARCH_ENABLE_EXA_MCP_ENV,
 } from "./config.ts";
+import { NoFetchProviderError } from "./errors.ts";
 import { fetchExaApiBatchWithPool } from "./exa-api.ts";
-import { fetchLocalUrl } from "./local.ts";
 import { fetchViaPublicApi } from "./public-api.ts";
 import { createFetchResult, type FetchResult } from "./result.ts";
+
+export type LocalFetch = (url: string) => Promise<FetchResult>;
 
 export interface FetchOperations {
   fetchUrl(url: string): Promise<FetchResult>;
   fetchUrls(urls: string[], maxCharacters?: number): Promise<FetchResult[]>;
 }
 
+export interface CreateFetchOperationsOptions {
+  /**
+   * Terminal local page-fetch fallback (jsdom/readability/turndown/unpdf). The
+   * edge build leaves this undefined so the entry never reaches Node-only deps;
+   * the @minpeter/opensearch/node entry injects the real pipeline.
+   */
+  readonly localFetch?: LocalFetch;
+}
+
 interface FetchPipelineContext {
   readonly env: EnvironmentReader;
   readonly exaApiKeyPool: ApiKeyPool;
+  readonly localFetch?: LocalFetch;
   readonly tinyFishApiKeyPool: TinyFishApiKeyPool;
 }
 
 const defaultFetchOperations = createFetchOperations(processEnvironmentReader);
 
 export function createFetchOperations(
-  env: EnvironmentReader = processEnvironmentReader
+  env: EnvironmentReader = processEnvironmentReader,
+  options: CreateFetchOperationsOptions = {}
 ): FetchOperations {
   const context: FetchPipelineContext = {
     exaApiKeyPool: createApiKeyPool(EXA_API_KEY_ENV, env),
     env,
+    localFetch: options.localFetch,
     tinyFishApiKeyPool: createTinyFishApiKeyPool(env),
   };
 
@@ -56,6 +70,17 @@ export function createFetchOperations(
 
 export function fetchUrl(url: string): Promise<FetchResult> {
   return defaultFetchOperations.fetchUrl(url);
+}
+
+function runLocalFetch(
+  url: string,
+  context: FetchPipelineContext
+): Promise<FetchResult> {
+  if (!context.localFetch) {
+    throw new NoFetchProviderError(url);
+  }
+
+  return context.localFetch(url);
 }
 
 async function fetchUrlDirect(
@@ -120,7 +145,7 @@ async function fetchUrlViaProviders(
     }
   }
 
-  return fetchLocalUrl(url);
+  return runLocalFetch(url, context);
 }
 
 async function fetchUrlWithoutTinyFish(
@@ -134,11 +159,11 @@ async function fetchUrlWithoutTinyFish(
       if (!(error instanceof Error)) {
         throw error;
       }
-      return fetchLocalUrl(url);
+      return runLocalFetch(url, context);
     }
   }
 
-  return fetchLocalUrl(url);
+  return runLocalFetch(url, context);
 }
 
 export function fetchUrls(
@@ -276,11 +301,11 @@ async function fetchUrlsWithoutTinyFish(
       if (!(error instanceof Error)) {
         throw error;
       }
-      return Promise.all(urls.map((url) => fetchLocalUrl(url)));
+      return Promise.all(urls.map((url) => runLocalFetch(url, context)));
     }
   }
 
-  return Promise.all(urls.map((url) => fetchLocalUrl(url)));
+  return Promise.all(urls.map((url) => runLocalFetch(url, context)));
 }
 
 async function fetchExaApiForContext(

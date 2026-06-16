@@ -1,6 +1,6 @@
 import type { SearchEngineName } from "./types.ts";
 
-type ScrapeEngineName = Extract<SearchEngineName, "Bing" | "DuckDuckGo">;
+type ScrapeEngineName = Extract<SearchEngineName, "DuckDuckGo">;
 
 const HTTP_PROTOCOL_PREFIXES: readonly ["http://", "https://"] = [
   "http://",
@@ -8,7 +8,6 @@ const HTTP_PROTOCOL_PREFIXES: readonly ["http://", "https://"] = [
 ];
 
 const SEARCH_ENGINE_HOSTS: Record<ScrapeEngineName, string[]> = {
-  Bing: ["bing.com", "www.bing.com"],
   DuckDuckGo: ["duckduckgo.com", "html.duckduckgo.com", "www.duckduckgo.com"],
 };
 
@@ -19,10 +18,6 @@ const SEARCH_ENGINE_INTERNAL_URL_RULES: Record<
     readonly ownedHostPatterns: readonly RegExp[];
   }
 > = {
-  Bing: {
-    alwaysIgnoreHostPatterns: [/\bhelp\.bing\.microsoft\.com$/u],
-    ownedHostPatterns: [/\bbing\.com$/u, /\bmicrosoft\.com$/u],
-  },
   DuckDuckGo: {
     alwaysIgnoreHostPatterns: [],
     ownedHostPatterns: [/\bduckduckgo\.com$/u],
@@ -56,37 +51,6 @@ export function hasHttpProtocol(url: string): boolean {
   return HTTP_PROTOCOL_PREFIXES.some((prefix) => url.startsWith(prefix));
 }
 
-export function normalizeBingUrl(url: string): string {
-  if (!hasHttpProtocol(url)) {
-    return "";
-  }
-
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(url);
-  } catch {
-    return "";
-  }
-
-  const hostname = parsedUrl.hostname.toLowerCase();
-  const pathname = parsedUrl.pathname.toLowerCase();
-  const isBingWrapperHost =
-    hostname === "www.bing.com" || hostname === "bing.com";
-
-  if (!(isBingWrapperHost && pathname.startsWith("/ck/a"))) {
-    return url.trim();
-  }
-
-  const wrappedTarget = parsedUrl.searchParams.get("u")?.trim() ?? "";
-  if (!wrappedTarget) {
-    return url.trim();
-  }
-
-  const decodedTarget = decodeBingWrappedUrl(wrappedTarget);
-  return decodedTarget || url.trim();
-}
-
 export function normalizeHeuristicUrl(
   engine: ScrapeEngineName,
   url: string
@@ -104,9 +68,6 @@ export function normalizeHeuristicUrl(
   }
 
   switch (engine) {
-    case "Bing": {
-      return normalizeBingUrl(trimmedUrl);
-    }
     case "DuckDuckGo": {
       return hasHttpProtocol(trimmedUrl) ? trimmedUrl : "";
     }
@@ -183,36 +144,4 @@ function isEngineOwnedInternalUrl({
   return [...searchParams.keys()].some((key) =>
     INTERNAL_QUERY_PARAMETER_KEYS.has(key)
   );
-}
-
-function decodeBingWrappedUrl(encodedTarget: string): string {
-  if (hasHttpProtocol(encodedTarget)) {
-    return encodedTarget;
-  }
-
-  const decodedTarget = tryDecodeBingBase64Target(encodedTarget);
-  if (!decodedTarget) {
-    return "";
-  }
-
-  try {
-    return new URL(decodedTarget).toString();
-  } catch {
-    return "";
-  }
-}
-
-function tryDecodeBingBase64Target(encodedTarget: string): string {
-  const normalizedTarget = encodedTarget.startsWith("a1")
-    ? encodedTarget.slice(2)
-    : encodedTarget;
-
-  if (!normalizedTarget) {
-    return "";
-  }
-
-  const base64 = normalizedTarget.replace(/-/g, "+").replace(/_/g, "/");
-  const paddedBase64 = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-
-  return Buffer.from(paddedBase64, "base64").toString("utf8").trim();
 }

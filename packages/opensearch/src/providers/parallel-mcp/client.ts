@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { CfWorkerJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/cfworker";
 import {
   type ApiKeyPool,
   getApiKeyPool,
@@ -18,7 +18,7 @@ import {
 } from "./content.ts";
 
 const PARALLEL_MCP_TIMEOUT_MS = 8000;
-const PARALLEL_MCP_SESSION_ID = `opensearch_${randomUUID().replaceAll("-", "")}`;
+const PARALLEL_MCP_SESSION_ID = `opensearch_${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
 const parallelMcpApiKeyPools = new WeakMap<EnvironmentReader, ApiKeyPool>();
 
 export interface ParallelMcpSearchResult {
@@ -65,10 +65,13 @@ async function withParallelMcpClient<T>(
   env: EnvironmentReader,
   run: (context: { readonly client: Client }) => Promise<T>
 ): Promise<T> {
-  const client = new Client({
-    name: "opensearch-parallel-mcp-client",
-    version: "0.1.0",
-  });
+  const client = new Client(
+    {
+      name: "opensearch-parallel-mcp-client",
+      version: "0.1.0",
+    },
+    { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() }
+  );
   const transport = new StreamableHTTPClientTransport(
     new URL(DEFAULT_PARALLEL_MCP_SERVER_URL),
     {

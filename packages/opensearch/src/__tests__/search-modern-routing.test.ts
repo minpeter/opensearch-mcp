@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSerpProviders } from "../search/providers/serp.ts";
-import { search } from "../search.ts";
+import { search } from "./full-runtime.ts";
 import { createMockResponse, resetSearchEnv } from "./search-test-helpers.ts";
 
 describe("modern search routing", () => {
@@ -70,10 +70,10 @@ describe("modern search routing", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("removed google scrape", 1)).rejects.toThrow(
-      "DuckDuckGo, Bing"
+      "DuckDuckGo [DuckDuckGo:blocked]"
     );
     const requestedUrls = mockFetch.mock.calls.map(([url]) => String(url));
-    expect(requestedUrls).toHaveLength(2);
+    expect(requestedUrls).toHaveLength(1);
     expect(requestedUrls.join("\n")).not.toContain("google.com/search");
   });
 });

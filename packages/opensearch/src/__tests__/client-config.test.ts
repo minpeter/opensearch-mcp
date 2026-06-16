@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createOpenSearch } from "../index.ts";
+import { createOpenSearch } from "../node.ts";
 import {
   createMockJsonResponse,
   resetSearchEnv,
@@ -9,7 +9,6 @@ import {
 const DISABLE_HOSTED_ENV = {
   OPENSEARCH_ENABLE_EXA_MCP: "false",
   OPENSEARCH_ENABLE_PARALLEL_MCP: "false",
-  OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS: "false",
 } as const;
 
 const ARTICLE_HTML = `<!DOCTYPE html><html><head><title>Config Article</title></head>

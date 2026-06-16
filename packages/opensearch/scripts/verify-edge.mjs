@@ -1,0 +1,73 @@
+// Cloudflare Workers safety gate for the edge entry (out/index.js).
+//
+// Bundles the built edge entry under the worker/browser resolve conditions that
+// Wrangler/workerd use, then asserts the resulting module graph never reaches a
+// Node-only dependency or a STATIC `node:` builtin import. Run after `tsup`.
+//
+// We deliberately do NOT grep the source for `new Function` (ajv ships it but
+// never compiles once the cfworker validator is injected) and we allow DYNAMIC
+// `import("node:...")` (pkce-challenge gates it behind globalThis.crypto, so it
+// never executes on Workers). Only the static import graph is load-bearing.
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+
+const ENTRY = fileURLToPath(new URL("../out/index.js", import.meta.url));
+
+// Heavy / Node-coupled modules that the edge entry must never pull in.
+const BANNED_INPUTS = [
+  /\/jsdom\//,
+  /\/unpdf\//,
+  /\/turndown\//,
+  /@mozilla\/readability\//,
+  /\/undici\//,
+  /\/local\.[cm]?js$/,
+  /\/duckduckgo\.[cm]?js$/,
+];
+
+const STATIC_IMPORT_KINDS = new Set(["import-statement", "require-call"]);
+
+const result = await build({
+  entryPoints: [ENTRY],
+  bundle: true,
+  write: false,
+  format: "esm",
+  platform: "browser",
+  conditions: ["workerd", "worker", "browser"],
+  external: ["node:*"],
+  metafile: true,
+  logLevel: "silent",
+});
+
+const inputs = Object.keys(result.metafile.inputs);
+
+const heavyLeaks = inputs.filter((path) =>
+  BANNED_INPUTS.some((pattern) => pattern.test(path))
+);
+
+const staticNodeLeaks = [];
+for (const [file, info] of Object.entries(result.metafile.inputs)) {
+  for (const imported of info.imports ?? []) {
+    if (
+      imported.path.startsWith("node:") &&
+      STATIC_IMPORT_KINDS.has(imported.kind)
+    ) {
+      staticNodeLeaks.push(`${imported.path}  (static import in ${file})`);
+    }
+  }
+}
+
+if (heavyLeaks.length > 0 || staticNodeLeaks.length > 0) {
+  console.error("EDGE LEAK: out/index.js is not Cloudflare Workers-safe:");
+  for (const path of heavyLeaks) {
+    console.error(`  heavy dependency bundled: ${path}`);
+  }
+  for (const leak of staticNodeLeaks) {
+    console.error(`  static node: import: ${leak}`);
+  }
+  process.exit(1);
+}
+
+console.log(
+  `edge entry clean: ${inputs.length} modules bundled under [workerd,worker,browser] - ` +
+    "no jsdom / unpdf / turndown / readability / undici / local / duckduckgo and no static node: imports."
+);

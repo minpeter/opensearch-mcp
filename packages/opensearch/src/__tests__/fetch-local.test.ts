@@ -16,8 +16,6 @@ vi.mock("../providers/exa-mcp/client.ts", () => ({
 }));
 
 import { extractText, getDocumentProxy } from "unpdf";
-
-import { fetchUrl } from "../fetch.ts";
 import {
   createMockPdfDocument,
   createMockResponse,
@@ -29,6 +27,7 @@ import {
   P_TAG_REGEX,
   stubHtmlFetch,
 } from "./fetch-test-helpers.ts";
+import { fetchUrl } from "./full-runtime.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();

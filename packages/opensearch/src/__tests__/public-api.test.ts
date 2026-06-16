@@ -9,7 +9,7 @@ import {
   SearchExecutionError,
   search,
   searchResultSchema,
-} from "../index.ts";
+} from "../node.ts";
 import {
   createMockResponse,
   readFixture,
@@ -29,7 +29,7 @@ describe("public API", () => {
   it("exports stable search and fetch schemas for library consumers", async () => {
     const publicApi = await import("../index.ts");
     const parsedSearchResult = searchResultSchema.parse({
-      engine: "Bing",
+      engine: "DuckDuckGo",
       snippet: "Typed JavaScript at scale.",
       title: "TypeScript",
       url: "https://www.typescriptlang.org/",
@@ -41,9 +41,10 @@ describe("public API", () => {
       url: "https://example.com",
     });
 
-    expect(SEARCH_ENGINE_NAMES).toContain("Bing");
+    expect(SEARCH_ENGINE_NAMES).toContain("DuckDuckGo");
+    expect(SEARCH_ENGINE_NAMES).not.toContain("Bing");
     expect(typeof createOpenSearch).toBe("function");
-    expect(parsedSearchResult.engine).toBe("Bing");
+    expect(parsedSearchResult.engine).toBe("DuckDuckGo");
     expect(parsedFetchResult.length).toBe(9);
     expect(publicApi).not.toHaveProperty("fetchUrl");
     expect(publicApi).not.toHaveProperty("fetchUrls");
@@ -54,10 +55,14 @@ describe("public API", () => {
 
   it("exports typed search errors for library consumers", () => {
     const executionError = new SearchExecutionError("No Results", false);
-    const engineError = new SearchEngineError("Bing", "blocked", "Blocked");
+    const engineError = new SearchEngineError(
+      "DuckDuckGo",
+      "blocked",
+      "Blocked"
+    );
 
     expect(executionError.retryable).toBe(false);
-    expect(engineError.engine).toBe("Bing");
+    expect(engineError.engine).toBe("DuckDuckGo");
     expect(engineError.kind).toBe("blocked");
   });
 

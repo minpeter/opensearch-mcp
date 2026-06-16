@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { searchWithRetryAndCache } from "../search.ts";
+import { searchWithRetryAndCache } from "./full-runtime.ts";
 import {
+  createMockJsonResponse,
   createMockResponse,
   readFixture,
   resetSearchEnv,
@@ -24,8 +25,6 @@ describe("searchWithRetryAndCache", () => {
       .fn()
       .mockRejectedValueOnce(new Error("Network error"))
       .mockRejectedValueOnce(new Error("Network error"))
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-github.html"))
       );
@@ -36,7 +35,7 @@ describe("searchWithRetryAndCache", () => {
     const results = await resultPromise;
 
     expect(results.length).toBeGreaterThan(0);
-    expect(mockFetch).toHaveBeenCalledTimes(5);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   }, 30_000);
 
   it("does NOT retry on No Results after the full fallback chain", async () => {
@@ -44,26 +43,27 @@ describe("searchWithRetryAndCache", () => {
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-no-results.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-no-results.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(searchWithRetryAndCache("nothing", 5)).rejects.toThrow(
       "No Results"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("uses the fallback chain and caches the final successful result", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("duckduckgo-challenge.html"))
+        createMockJsonResponse({
+          results: [],
+        })
       )
       .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-github.html"))
+        createMockResponse(readFixture("duckduckgo-github.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
@@ -77,22 +77,24 @@ describe("searchWithRetryAndCache", () => {
     );
 
     expect(firstResults).toEqual(secondResults);
-    expect(firstResults[0]?.engine).toBe("Bing");
+    expect(firstResults[0]?.engine).toBe("DuckDuckGo");
     expect(firstResults[0]?.title).toBe("GitHub");
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry when mixed failures produce the terminal aggregated error", async () => {
+    process.env.EXA_API_KEY = "exa-key";
+
     const mockFetch = vi
       .fn()
+      .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockRejectedValueOnce(new Error("Network error"));
+      );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(searchWithRetryAndCache("mixed-failure", 5)).rejects.toThrow(
-      "Search failed across all engines: DuckDuckGo, Bing [DuckDuckGo:blocked; Bing:transient]"
+      "Search failed across all engines: Exa, DuckDuckGo [Exa:transient; DuckDuckGo:blocked]"
     );
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
@@ -105,18 +107,15 @@ describe("searchWithRetryAndCache", () => {
       .mockResolvedValueOnce(new Response("", { status: 402 }))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-challenge.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(
       searchWithRetryAndCache("exa-auth-failure", 5)
     ).rejects.toThrow(
-      "Search failed across all engines: Exa, DuckDuckGo, Bing [Exa:misconfigured; DuckDuckGo:blocked; Bing:blocked]"
+      "Search failed across all engines: Exa, DuckDuckGo [Exa:misconfigured; DuckDuckGo:blocked]"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("re-fetches after TTL expiry", async () => {

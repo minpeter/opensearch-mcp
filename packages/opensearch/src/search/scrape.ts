@@ -1,13 +1,8 @@
-import { type CheerioAPI, load } from "cheerio";
+import { type CheerioAPI, load } from "cheerio/slim";
 
 import { getErrorMessage, SearchEngineError } from "./errors.ts";
-import {
-  classifyStatusFailure,
-  createSearchRequestInit,
-  createSearchUrl,
-} from "./http.ts";
+import { classifyStatusFailure, createSearchRequestInit } from "./http.ts";
 import { extractHeuristicResults } from "./scrape-heuristic.ts";
-import { normalizeBingUrl } from "./scrape-url.ts";
 import { attachEngine, dedupeResults, normalizeResult } from "./text.ts";
 import type {
   ParsedResult,
@@ -16,7 +11,7 @@ import type {
   SearchResult,
 } from "./types.ts";
 
-type ScrapeEngineName = Extract<SearchEngineName, "Bing" | "DuckDuckGo">;
+type ScrapeEngineName = Extract<SearchEngineName, "DuckDuckGo">;
 
 interface ScrapeSearchEngine {
   getRequestInit(query: string): {
@@ -39,19 +34,6 @@ export const SCRAPE_SEARCH_ENGINES: Record<
   ScrapeEngineName,
   ScrapeSearchEngine
 > = {
-  Bing: {
-    name: "Bing",
-    getRequestInit(query: string) {
-      return {
-        init: createSearchRequestInit("GET"),
-        url: createSearchUrl("https://www.bing.com/search", {
-          q: query,
-          setlang: "en-US",
-        }),
-      };
-    },
-    parse: parseBingResults,
-  },
   DuckDuckGo: {
     name: "DuckDuckGo",
     getRequestInit(query: string) {
@@ -137,33 +119,6 @@ function parseDuckDuckGoResults(html: string): ParsedResult[] {
           };
         }
       ),
-  });
-}
-
-function parseBingResults(html: string): ParsedResult[] {
-  return parseEngineResults(html, {
-    blockedMessage: "Bing blocked the request",
-    detectBlocked: (_, pageText) =>
-      pageText.includes("One last step") ||
-      pageText.includes("Enter the characters you see below") ||
-      pageText.includes("Please solve this puzzle") ||
-      pageText.includes("verify you are a human"),
-    detectNoResults: ($, pageText) =>
-      pageText.includes("There are no results for") ||
-      pageText.includes("No results found for") ||
-      pageText.includes("There are no results for this question") ||
-      $(".b_no").length > 0,
-    engine: "Bing",
-    extractResults: ($) =>
-      collectResults($, "li.b_algo", ($result) => {
-        const anchor = $result("h2 a").first();
-
-        return {
-          snippet: $result(".b_caption p, .b_snippet").first().text().trim(),
-          title: anchor.text().trim(),
-          url: normalizeBingUrl(anchor.attr("href")?.trim() ?? ""),
-        };
-      }),
   });
 }
 

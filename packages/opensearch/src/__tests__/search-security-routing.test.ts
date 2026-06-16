@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchSearchText } from "../search/http.ts";
-import { search } from "../search.ts";
+import { search } from "./full-runtime.ts";
 import {
   createMockJsonResponse,
   createMockResponse,
@@ -51,105 +51,86 @@ describe("search provider security guardrails", () => {
   });
 
   it("does not fetch non-local HTTP SearxNG endpoint overrides", async () => {
-    process.env.OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS = "true";
-    process.env.OPENSEARCH_SEARXNG_URLS = "http://evil.example";
-    process.env.OPENSEARCH_STARTPAGE_URL = "http://localhost/startpage";
+    // Two SearxNG endpoints: a remote HTTP one (rejected by the trusted-base-url
+    // guard before any fetch) and a localhost one (allowed for local gateways).
+    process.env.OPENSEARCH_SEARXNG_URLS =
+      "http://evil.example;http://localhost";
 
-    const mockFetch = vi.fn().mockImplementation((url: string | URL) => {
-      if (String(url).includes("evil.example")) {
+    const mockFetch = vi.fn().mockResolvedValue(
+      createMockJsonResponse({
+        results: [
+          {
+            content: "Trusted SearxNG result.",
+            title: "Trusted SearxNG",
+            url: "https://example.com/trusted",
+          },
+        ],
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("searxng override guard", 1);
+
+    expect(results[0]).toEqual({
+      engine: "SearxNG",
+      snippet: "Trusted SearxNG result.",
+      title: "Trusted SearxNG",
+      url: "https://example.com/trusted",
+    });
+    const requestedUrls = mockFetch.mock.calls.map(([url]) => String(url));
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain("http://localhost/search");
+    expect(requestedUrls.join("\n")).not.toContain("evil.example");
+  });
+
+  it("ignores removed Wikipedia overrides and keeps DuckDuckGo as the keyless fallback", async () => {
+    process.env.OPENSEARCH_WIKIPEDIA_URL = "http://localhost/wikipedia";
+
+    const mockFetch = vi.fn((url: string | URL) => {
+      const requestUrl = String(url);
+      if (requestUrl.includes("localhost/wikipedia")) {
         return Promise.resolve(
           createMockJsonResponse({
-            results: [
-              {
-                content: "Untrusted SearxNG result.",
-                title: "Untrusted SearxNG",
-                url: "https://example.com/untrusted",
-              },
-            ],
+            query: {
+              search: [
+                {
+                  pageid: 123,
+                  snippet: "Removed Wikipedia override.",
+                  title: "Removed override",
+                },
+              ],
+            },
           })
         );
       }
-
       return Promise.resolve(
         createMockResponse(`
-          <div class="result">
-            <a class="result-title" href="https://example.com/trusted">
-              Trusted fallback
-            </a>
-            <p class="description">Trusted fallback result.</p>
+          <div id="links">
+            <div class="result results_links">
+              <h2 class="result__title">
+                <a class="result__a" href="https://example.com/duckduckgo">DuckDuckGo</a>
+              </h2>
+              <a class="result__a" href="https://example.com/duckduckgo">DuckDuckGo</a>
+              <div class="result__snippet">DuckDuckGo remains the keyless fallback.</div>
+            </div>
           </div>
         `)
       );
     });
     vi.stubGlobal("fetch", mockFetch);
 
-    const results = await search("searxng override guard", 1);
+    const results = await search("removed wikipedia override guard", 1);
 
     expect(results[0]).toEqual({
-      engine: "Startpage",
-      snippet: "Trusted fallback result.",
-      title: "Trusted fallback",
-      url: "https://example.com/trusted",
+      engine: "DuckDuckGo",
+      snippet: "DuckDuckGo remains the keyless fallback.",
+      title: "DuckDuckGo",
+      url: "https://example.com/duckduckgo",
     });
     const requestedUrls = mockFetch.mock.calls.map(([url]) => String(url));
     expect(requestedUrls).toHaveLength(1);
-    expect(requestedUrls[0]).toContain("http://localhost/startpage");
-    expect(requestedUrls.join("\n")).not.toContain("evil.example");
-  });
-
-  it("falls through invalid zero-key HTML endpoint overrides", async () => {
-    process.env.OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS = "true";
-    process.env.OPENSEARCH_STARTPAGE_URL = "http://evil.example/startpage";
-    process.env.OPENSEARCH_WEBCRAWLER_URL = "http://evil.example/webcrawler";
-    process.env.OPENSEARCH_WIKIPEDIA_URL = "http://localhost/wikipedia";
-
-    const mockFetch = vi.fn((url: string | URL) => {
-      const requestUrl = String(url);
-      if (requestUrl.includes("html.duckduckgo.com")) {
-        return Promise.resolve(
-          createMockResponse('<div class="no-results" />')
-        );
-      }
-      if (requestUrl.includes("bing.com/search")) {
-        return Promise.resolve(createMockResponse('<div class="b_no" />'));
-      }
-      if (!requestUrl.includes("localhost/wikipedia")) {
-        return Promise.resolve(createMockResponse("<html></html>"));
-      }
-
-      return Promise.resolve(
-        createMockJsonResponse({
-          query: {
-            search: [
-              {
-                pageid: 123,
-                snippet: "Trusted Wikipedia fallback.",
-                title: "Trusted fallback",
-              },
-            ],
-          },
-        })
-      );
-    });
-    vi.stubGlobal("fetch", mockFetch);
-
-    const results = await search("zero-key override guard", 1);
-
-    expect(results[0]).toEqual({
-      engine: "Wikipedia",
-      snippet: "Trusted Wikipedia fallback.",
-      title: "Trusted fallback",
-      url: "https://en.wikipedia.org/?curid=123",
-    });
-    const requestedUrls = mockFetch.mock.calls.map(([url]) => String(url));
-    expect(requestedUrls).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("https://html.duckduckgo.com/html/"),
-        expect.stringContaining("https://www.bing.com/search"),
-        expect.stringContaining("http://localhost/wikipedia"),
-      ])
-    );
-    expect(requestedUrls.join("\n")).not.toContain("evil.example");
+    expect(requestedUrls[0]).toContain("https://html.duckduckgo.com/html/");
+    expect(requestedUrls.join("\n")).not.toContain("localhost/wikipedia");
   });
 
   it("allows local HTTP endpoint overrides for tests and private gateways", async () => {

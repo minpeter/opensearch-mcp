@@ -3,18 +3,33 @@ import {
   type OpenSearchEnvironment,
 } from "./environment.ts";
 import {
+  type CreateFetchServiceOptions,
   createFetchService,
   type FetchOptions,
   type FetchResult,
   type FetchService,
 } from "./fetch.ts";
 import type { SearchResult } from "./search/types.ts";
-import { createSearchService, type SearchService } from "./search.ts";
+import {
+  type CreateSearchServiceOptions,
+  createSearchService,
+  type SearchService,
+} from "./search.ts";
 
 export type { OpenSearchEnvironment } from "./environment.ts";
 
 export interface OpenSearchOptions {
   readonly env?: OpenSearchEnvironment;
+}
+
+/**
+ * Internal runtime seams — not part of the public surface. The
+ * @minpeter/opensearch/node entry injects the Node-only local fetch pipeline
+ * and the DuckDuckGo-inclusive provider list here; the edge entry passes none.
+ */
+export interface OpenSearchRuntime {
+  readonly localFetch?: CreateFetchServiceOptions["localFetch"];
+  readonly searchProviders?: CreateSearchServiceOptions["providers"];
 }
 
 export interface OpenSearchClient {
@@ -30,10 +45,14 @@ class ConfiguredOpenSearchClient implements OpenSearchClient {
   readonly #fetchService: FetchService;
   readonly #searchService: SearchService;
 
-  constructor(options: OpenSearchOptions) {
+  constructor(options: OpenSearchOptions, runtime: OpenSearchRuntime) {
     const env = createEnvironmentReader(options.env);
-    this.#fetchService = createFetchService(env);
-    this.#searchService = createSearchService(env);
+    this.#fetchService = createFetchService(env, {
+      localFetch: runtime.localFetch,
+    });
+    this.#searchService = createSearchService(env, {
+      providers: runtime.searchProviders,
+    });
   }
 
   search(query: string, maxResults?: number): Promise<SearchResult[]> {
@@ -60,5 +79,16 @@ class ConfiguredOpenSearchClient implements OpenSearchClient {
 export function createOpenSearch(
   options: OpenSearchOptions = {}
 ): OpenSearchClient {
-  return new ConfiguredOpenSearchClient(options);
+  return new ConfiguredOpenSearchClient(options, {});
+}
+
+/**
+ * Builds a client with Node-only runtime seams injected. Used by
+ * @minpeter/opensearch/node; not exported from the edge entry.
+ */
+export function createOpenSearchWithRuntime(
+  options: OpenSearchOptions,
+  runtime: OpenSearchRuntime
+): OpenSearchClient {
+  return new ConfiguredOpenSearchClient(options, runtime);
 }

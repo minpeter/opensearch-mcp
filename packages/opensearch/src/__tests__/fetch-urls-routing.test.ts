@@ -15,8 +15,8 @@ vi.mock("../providers/exa-mcp/client.ts", () => ({
   fetchExaMcpBatch,
 }));
 
-import { fetchUrls } from "../fetch.ts";
 import { ARTICLE_HTML, createMockResponse } from "./fetch-test-helpers.ts";
+import { fetchUrls } from "./full-runtime.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();

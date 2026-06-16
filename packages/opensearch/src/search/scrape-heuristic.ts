@@ -1,4 +1,4 @@
-import type { CheerioAPI } from "cheerio";
+import type { CheerioAPI } from "cheerio/slim";
 import {
   isIgnoredSearchEngineUrl,
   normalizeHeuristicUrl,
@@ -11,7 +11,7 @@ import {
 } from "./text.ts";
 import type { ParsedResult, SearchEngineName } from "./types.ts";
 
-type ScrapeEngineName = Extract<SearchEngineName, "Bing" | "DuckDuckGo">;
+type ScrapeEngineName = Extract<SearchEngineName, "DuckDuckGo">;
 
 interface HeuristicAnchor {
   closest(selector?: string): { text(): string };
