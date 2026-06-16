@@ -31,6 +31,7 @@ const firecrawlSearchResponseSchema = z.object({
               title: optionalStringSchema,
               url: optionalStringSchema,
             })
+            .nullable()
             .optional(),
           title: optionalStringSchema,
           url: optionalStringSchema,
@@ -49,6 +50,7 @@ const firecrawlScrapeResponseSchema = z.object({
         title: optionalStringSchema,
         url: optionalStringSchema,
       })
+      .nullable()
       .optional(),
   }),
 });
@@ -143,23 +145,13 @@ export async function fetchFirecrawlUrl(
 function createFirecrawlSearchSnippet(item: {
   readonly description?: string | null;
   readonly markdown?: string | null;
-  readonly metadata?: { readonly description?: string | null };
+  readonly metadata?: { readonly description?: string | null } | null;
 }): string {
   return (
     item.description ??
     item.markdown?.slice(0, FIRECRAWL_SEARCH_MARKDOWN_MAX_CHARACTERS) ??
     item.metadata?.description ??
     ""
-  );
-}
-
-export function fetchFirecrawlUrls(
-  urls: readonly string[],
-  maxCharacters: number,
-  env: EnvironmentReader = processEnvironmentReader
-): Promise<FirecrawlFetchResult[]> {
-  return Promise.all(
-    urls.map((url) => fetchFirecrawlUrl(url, maxCharacters, env))
   );
 }
 
@@ -257,7 +249,7 @@ async function readFirecrawlJson(
   response: Response
 ): Promise<unknown> {
   try {
-    const payload: unknown = await response.clone().json();
+    const payload: unknown = await response.json();
     return payload;
   } catch (error) {
     throw new Error(
@@ -272,7 +264,7 @@ async function createFirecrawlHttpError(
   endpoint: FirecrawlEndpoint,
   response: Response
 ): Promise<Error> {
-  const body = await response.clone().text();
+  const body = await response.text();
   const message = body.trim() || "empty response body";
 
   return new Error(

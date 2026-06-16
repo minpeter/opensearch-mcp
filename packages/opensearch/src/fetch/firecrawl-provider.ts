@@ -1,11 +1,12 @@
 import type { EnvironmentReader } from "../environment.ts";
 import {
   fetchFirecrawlUrl,
-  fetchFirecrawlUrls,
   isFirecrawlEnabled,
 } from "../providers/firecrawl/client.ts";
 import { DEFAULT_MAX_CHARACTERS } from "./config.ts";
 import { createFetchResult, type FetchResult } from "./result.ts";
+
+type FetchFallback = (url: string) => Promise<FetchResult>;
 
 export async function fetchUrlViaFirecrawl(
   url: string,
@@ -15,20 +16,28 @@ export async function fetchUrlViaFirecrawl(
   return createFetchResult(url, result.content, result.title);
 }
 
-export async function fetchUrlsViaFirecrawl(
+export function fetchUrlsViaFirecrawl(
   urls: string[],
   maxCharacters: number,
-  env: EnvironmentReader
+  env: EnvironmentReader,
+  fallback?: FetchFallback
 ): Promise<FetchResult[]> {
-  const results = await fetchFirecrawlUrls(urls, maxCharacters, env);
-
-  return urls.map((url, index) => {
-    const result = results[index];
-    if (!result) {
-      throw new Error("Firecrawl scrape returned an unexpected response shape");
-    }
-    return createFetchResult(url, result.content, result.title);
-  });
+  return Promise.all(
+    urls.map(async (url) => {
+      try {
+        const result = await fetchFirecrawlUrl(url, maxCharacters, env);
+        return createFetchResult(url, result.content, result.title);
+      } catch (error) {
+        if (!(error instanceof Error)) {
+          throw error;
+        }
+        if (fallback) {
+          return fallback(url);
+        }
+        throw error;
+      }
+    })
+  );
 }
 
 export async function tryFetchUrlViaFirecrawl(
@@ -52,14 +61,15 @@ export async function tryFetchUrlViaFirecrawl(
 export async function tryFetchUrlsViaFirecrawl(
   urls: string[],
   maxCharacters: number,
-  env: EnvironmentReader
+  env: EnvironmentReader,
+  fallback?: FetchFallback
 ): Promise<FetchResult[] | null> {
   if (!isFirecrawlEnabled(env)) {
     return null;
   }
 
   try {
-    return await fetchUrlsViaFirecrawl(urls, maxCharacters, env);
+    return await fetchUrlsViaFirecrawl(urls, maxCharacters, env, fallback);
   } catch (error) {
     if (!(error instanceof Error)) {
       throw error;

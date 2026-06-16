@@ -141,7 +141,8 @@ export async function fetchUrlsViaProviders(
   const firecrawlResults = await tryFetchUrlsViaFirecrawl(
     urls,
     maxCharacters,
-    context.env
+    context.env,
+    (url) => runLocalFetch(url, context)
   );
   return (
     firecrawlResults ??
@@ -191,7 +192,8 @@ async function fetchUrlsWithoutTinyFish(
   const firecrawlResults = await tryFetchUrlsViaFirecrawl(
     urls,
     maxCharacters,
-    context.env
+    context.env,
+    (url) => runLocalFetch(url, context)
   );
   return (
     firecrawlResults ??

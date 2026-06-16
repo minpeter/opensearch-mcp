@@ -196,10 +196,7 @@ describe("fetchUrl fallback routing", () => {
         JSON.stringify({
           data: {
             markdown: "# Firecrawl body",
-            metadata: {
-              sourceURL: "https://example.com/article",
-              title: "Firecrawl title",
-            },
+            metadata: null,
           },
           success: true,
         }),
@@ -216,7 +213,7 @@ describe("fetchUrl fallback routing", () => {
     expect(result).toEqual({
       content: "# Firecrawl body",
       length: "# Firecrawl body".length,
-      title: "Firecrawl title",
+      title: "",
       url: "https://example.com/article",
     });
     expect(mockFetch).toHaveBeenCalledWith(

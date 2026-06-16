@@ -208,6 +208,7 @@ describe("search provider routing", () => {
           web: [
             {
               description: "Firecrawl no-key search result.",
+              metadata: null,
               title: "Firecrawl Search",
               url: "https://www.firecrawl.dev/",
             },
