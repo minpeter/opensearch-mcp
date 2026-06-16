@@ -42,7 +42,7 @@ describe("search with Parallel MCP", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("agent search", 2);
 
     expect(results).toEqual([
@@ -73,7 +73,7 @@ describe("search with Parallel MCP", () => {
     );
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("fallback search", 1);
 
     expect(results[0]).toEqual({
@@ -95,7 +95,7 @@ describe("search with Parallel MCP", () => {
       );
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github", 1);
 
     expect(results[0]?.engine).toBe("DuckDuckGo");

@@ -13,6 +13,7 @@ import {
 import { getSearchProviders } from "./search/providers.ts";
 import {
   SEARCH_ENGINE_NAMES as SEARCH_ENGINE_NAMES_VALUE,
+  type SearchProvider,
   type SearchResult,
   searchResultSchema as searchResultSchemaValue,
   searchResultsSchema as searchResultsSchemaValue,
@@ -32,14 +33,20 @@ export interface SearchService {
   ): Promise<SearchResult[]>;
 }
 
+export interface CreateSearchServiceOptions {
+  readonly providers?: (env: EnvironmentReader) => SearchProvider[];
+}
+
 const defaultSearchService = createSearchService(processEnvironmentReader);
 
 export function createSearchService(
-  env: EnvironmentReader = processEnvironmentReader
+  env: EnvironmentReader = processEnvironmentReader,
+  options: CreateSearchServiceOptions = {}
 ): SearchService {
+  const resolveProviders = options.providers ?? getSearchProviders;
   const searchCache = new TtlCache<string, SearchResult[]>(SEARCH_CACHE_TTL_MS);
   const configuredProviders =
-    env === processEnvironmentReader ? null : getSearchProviders(env);
+    env === processEnvironmentReader ? null : resolveProviders(env);
 
   async function searchOnce(
     query: string,
@@ -47,7 +54,7 @@ export function createSearchService(
   ): Promise<SearchResult[]> {
     const failures: SearchEngineError[] = [];
 
-    const providers = configuredProviders ?? getSearchProviders(env);
+    const providers = configuredProviders ?? resolveProviders(env);
 
     for (const provider of providers) {
       try {

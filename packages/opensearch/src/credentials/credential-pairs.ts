@@ -61,7 +61,7 @@ export function createCredentialPairPool(
 ): CredentialPairPool {
   let credentialIndex = 0;
   let credentialSource: string | undefined;
-  let processEnvReference = process.env;
+  let processEnvReference = globalThis.process?.env;
 
   return {
     getAttemptOrder() {
@@ -83,11 +83,11 @@ export function createCredentialPairPool(
   function readPairs(): readonly CredentialPair[] {
     if (
       env === processEnvironmentReader &&
-      process.env !== processEnvReference
+      globalThis.process?.env !== processEnvReference
     ) {
       credentialIndex = 0;
       credentialSource = undefined;
-      processEnvReference = process.env;
+      processEnvReference = globalThis.process?.env;
     }
 
     const source = `${env.read(loginName) ?? ""}\u0000${env.read(passwordName) ?? ""}`;

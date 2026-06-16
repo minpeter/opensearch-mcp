@@ -2,7 +2,6 @@ import {
   type EnvironmentReader,
   processEnvironmentReader,
 } from "../environment.ts";
-import { createAugmentedBingProvider } from "./providers/augmented-bing.ts";
 import {
   createBraveSearchProvider,
   createTinyFishSearchProvider,
@@ -15,13 +14,10 @@ import { createIndependentProviders } from "./providers/independent.ts";
 import { createLlmNativeProviders } from "./providers/llm.ts";
 import { createParallelMcpSearchProvider } from "./providers/parallel-mcp.ts";
 import { createSerpProviders } from "./providers/serp.ts";
-import { createZeroKeyProviders } from "./providers/zero-key.ts";
-import { createScrapeSearchProvider, SCRAPE_SEARCH_ENGINES } from "./scrape.ts";
 import type { SearchProvider } from "./types.ts";
 
 const EXA_MCP_OPT_OUT_ENV = "OPENSEARCH_ENABLE_EXA_MCP";
 const PARALLEL_MCP_OPT_OUT_ENV = "OPENSEARCH_ENABLE_PARALLEL_MCP";
-const ZERO_KEY_OPT_OUT_ENV = "OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS";
 
 function isExaMcpEnabled(env: EnvironmentReader): boolean {
   return env.read(EXA_MCP_OPT_OUT_ENV) !== "false";
@@ -31,12 +27,19 @@ function isParallelMcpEnabled(env: EnvironmentReader): boolean {
   return env.read(PARALLEL_MCP_OPT_OUT_ENV) !== "false";
 }
 
-function isZeroKeyProvidersEnabled(env: EnvironmentReader): boolean {
-  return env.read(ZERO_KEY_OPT_OUT_ENV) !== "false";
+export interface GetSearchProvidersOptions {
+  /**
+   * Factory for the DuckDuckGo provider. It relies on `node:vm` to solve the
+   * proof-of-work challenge and cannot run on Cloudflare Workers, so the edge
+   * entry omits it; @minpeter/opensearch/node injects it here as the final
+   * keyless fallback in the chain.
+   */
+  readonly duckDuckGoFactory?: (env: EnvironmentReader) => SearchProvider;
 }
 
 export function getSearchProviders(
-  env: EnvironmentReader = processEnvironmentReader
+  env: EnvironmentReader = processEnvironmentReader,
+  options: GetSearchProvidersOptions = {}
 ): SearchProvider[] {
   const providers: SearchProvider[] = [];
 
@@ -57,16 +60,9 @@ export function getSearchProviders(
   pushProvider(providers, createExaSearchProvider(env));
   providers.push(...createIndependentProviders(env));
 
-  if (isZeroKeyProvidersEnabled(env)) {
-    providers.push(...createZeroKeyProviders(env));
+  if (options.duckDuckGoFactory) {
+    providers.push(options.duckDuckGoFactory(env));
   }
-
-  providers.push(createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.DuckDuckGo));
-  providers.push(
-    isZeroKeyProvidersEnabled(env)
-      ? createAugmentedBingProvider(env)
-      : createScrapeSearchProvider(SCRAPE_SEARCH_ENGINES.Bing)
-  );
 
   return providers;
 }

@@ -19,7 +19,6 @@ describe("search provider routing", () => {
   it("advertises every optional provider supported by the routing registry", () => {
     expect(SEARCH_ENGINE_NAMES).toEqual(
       expect.arrayContaining([
-        "Bing",
         "Brave",
         "BrightData",
         "DataForSEO",
@@ -43,6 +42,9 @@ describe("search provider routing", () => {
         "Valyu",
         "You",
       ])
+    );
+    expect(SEARCH_ENGINE_NAMES).not.toEqual(
+      expect.arrayContaining(["Bing", "Startpage", "Webcrawler"])
     );
   });
 
@@ -158,7 +160,7 @@ describe("search provider routing", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("uses zero-key SearxNG before scrape providers when no tokens are configured", async () => {
+  it("uses configured SearxNG before DuckDuckGo when no tokens are configured", async () => {
     process.env.OPENSEARCH_SEARXNG_URLS = "https://searx.example";
 
     const mockFetch = vi.fn().mockResolvedValueOnce(

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createBasicAuthHeader } from "../providers/shared/base-url.ts";
 import { search } from "../search.ts";
 import {
   createMockJsonResponse,
@@ -15,6 +16,7 @@ describe("DataForSEO credential pair pools", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     resetSearchEnv();
   });
 
@@ -74,6 +76,48 @@ describe("DataForSEO credential pair pools", () => {
         Authorization: basicAuth("data-login-b", "data-password-b"),
       }),
     ]);
+  });
+
+  it("encodes non-ASCII credential pairs as UTF-8 Basic auth", async () => {
+    process.env.DATAFORSEO_LOGIN = "데이터-login";
+    process.env.DATAFORSEO_PASSWORD = "pässword";
+    const mockFetch = vi.fn().mockResolvedValueOnce(
+      createMockJsonResponse({
+        tasks: [
+          {
+            result: [
+              {
+                items: [
+                  {
+                    description: "DataForSEO unicode credential result.",
+                    title: "DataForSEO unicode",
+                    url: "https://example.com/dataforseo-unicode",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const results = await search("dataforseo unicode", 1);
+
+    expect(results[0]?.engine).toBe("DataForSEO");
+    expect(mockFetch.mock.calls[0]?.[1]?.headers).toEqual(
+      expect.objectContaining({
+        Authorization: basicAuth("데이터-login", "pässword"),
+      })
+    );
+  });
+
+  it("creates Basic auth without the Node Buffer global", () => {
+    vi.stubGlobal("Buffer", undefined);
+
+    const header = createBasicAuthHeader("데이터-login", "pässword");
+
+    expect(header).toBe("Basic 642w7J207YSwLWxvZ2luOnDDpHNzd29yZA==");
   });
 
   it("does not try the next pair for malformed payloads", async () => {
@@ -151,5 +195,14 @@ describe("DataForSEO credential pair pools", () => {
 });
 
 function basicAuth(login: string, password: string): string {
-  return `Basic ${Buffer.from(`${login}:${password}`).toString("base64")}`;
+  return `Basic ${encodeUtf8Base64(`${login}:${password}`)}`;
+}
+
+function encodeUtf8Base64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }

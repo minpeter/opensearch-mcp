@@ -15,8 +15,8 @@ vi.mock("../providers/exa-mcp/client.ts", () => ({
   fetchExaMcpBatch,
 }));
 
-import { fetchUrl } from "../fetch.ts";
 import { stubHtmlFetch } from "./fetch-test-helpers.ts";
+import { fetchUrl } from "./full-runtime.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();

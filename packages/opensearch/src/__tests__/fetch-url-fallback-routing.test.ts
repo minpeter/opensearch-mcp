@@ -15,8 +15,8 @@ vi.mock("../providers/exa-mcp/client.ts", () => ({
   fetchExaMcpBatch,
 }));
 
-import { fetchUrl } from "../fetch.ts";
 import { stubHtmlFetch } from "./fetch-test-helpers.ts";
+import { fetchUrl, fetchUrls } from "./full-runtime.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -173,5 +173,23 @@ describe("fetchUrl fallback routing", () => {
 
     expect(fetchExaMcp).not.toHaveBeenCalled();
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes a batch URL through Phase-0 public API before the providers", async () => {
+    const redditBody = JSON.stringify([
+      { data: { children: [{ data: { selftext: "Body", title: "Post" } }] } },
+      { data: { children: [] } },
+    ]);
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response(redditBody, { status: 200 }));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const [result] = await fetchUrls([
+      "https://www.reddit.com/r/x/comments/abc/title/",
+    ]);
+
+    expect(result?.title).toBe("Post");
+    expect(fetchExaMcpBatch).not.toHaveBeenCalled();
   });
 });

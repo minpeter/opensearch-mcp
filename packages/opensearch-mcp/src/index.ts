@@ -1,4 +1,4 @@
-import { fetch, search } from "@minpeter/opensearch";
+import { fetch, search } from "@minpeter/opensearch/node";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 

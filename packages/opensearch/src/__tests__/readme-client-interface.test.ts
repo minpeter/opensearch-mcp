@@ -36,9 +36,14 @@ describe("README client interface", () => {
     expect(readme).toContain(
       'import { createOpenSearch, fetch, search } from "@minpeter/opensearch";'
     );
+    expect(readme).toContain(
+      'import { fetch as nodeFetch } from "@minpeter/opensearch/node";'
+    );
+    expect(readme).toContain("root entry is edge-safe");
+    expect(readme).toContain("Use the `/node` entry");
     expect(readme).toContain("const openSearch = createOpenSearch({");
     expect(readme).toContain("await search(");
-    expect(readme).toContain("await fetch(");
+    expect(readme).toContain("await nodeFetch(");
 
     expect(readme).not.toContain("fetchUrlsWithCache");
     expect(readme).not.toContain("searchWithRetryAndCache");

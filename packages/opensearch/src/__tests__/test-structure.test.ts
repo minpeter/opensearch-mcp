@@ -12,7 +12,6 @@ const SEARCH_MODULE_IMPORT_REGEX = /from\s+["'](?:\.\.\/)+search\//u;
 const SOURCE_DIRECTORY = fileURLToPath(new URL("..", import.meta.url));
 const TESTS_DIRECTORY = fileURLToPath(new URL(".", import.meta.url));
 const EXPECTED_SEARCH_PROVIDER_REGISTRY_FILES = [
-  "augmented-bing.ts",
   "core.ts",
   "exa.ts",
   "independent.ts",
@@ -20,7 +19,6 @@ const EXPECTED_SEARCH_PROVIDER_REGISTRY_FILES = [
   "llm.ts",
   "parallel-mcp.ts",
   "serp.ts",
-  "zero-key.ts",
 ] as const;
 const EXPECTED_SERP_PROVIDER_FILES = [
   "bright-data.ts",

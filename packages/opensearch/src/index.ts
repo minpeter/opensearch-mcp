@@ -4,6 +4,7 @@ export type {
   OpenSearchOptions,
 } from "./client.ts";
 export { createOpenSearch } from "./client.ts";
+export { NoFetchProviderError } from "./fetch/errors.ts";
 export type { FetchOptions, FetchResult } from "./fetch.ts";
 export { fetch, fetchResultSchema } from "./fetch.ts";
 export { SearchEngineError, SearchExecutionError } from "./search/errors.ts";

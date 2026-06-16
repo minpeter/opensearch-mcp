@@ -1,0 +1,77 @@
+[
+  {
+    "query": "파이썬 리스트 컴프리헨션 사용법",
+    "lang": "ko",
+    "relevant": ["wikidocs.net", "docs.python.org"]
+  },
+  {
+    "query": "리액트 useEffect 훅 사용법",
+    "lang": "ko",
+    "relevant": ["ko.react.dev", "react-ko.dev"]
+  },
+  {
+    "query": "깃 reset과 revert 차이",
+    "lang": "ko",
+    "relevant": ["git-scm.com"]
+  },
+  {
+    "query": "광합성 명반응 암반응 과정",
+    "lang": "ko",
+    "relevant": ["ko.wikipedia.org", "namu.wiki"]
+  },
+  {
+    "query": "이순신 한산도 대첩 학익진 전술",
+    "lang": "ko",
+    "relevant": ["ko.wikipedia.org", "namu.wiki"]
+  },
+  {
+    "query": "엔트로피 열역학 제2법칙 정의",
+    "lang": "ko",
+    "relevant": ["ko.wikipedia.org", "namu.wiki"]
+  },
+  {
+    "query": "Python list comprehension syntax with conditional",
+    "lang": "en",
+    "relevant": ["docs.python.org"]
+  },
+  {
+    "query": "React useEffect cleanup function dependency array",
+    "lang": "en",
+    "relevant": ["react.dev"]
+  },
+  {
+    "query": "kubectl apply vs create difference declarative imperative",
+    "lang": "en",
+    "relevant": ["kubernetes.io"]
+  },
+  {
+    "query": "speed of light in a vacuum in meters per second",
+    "lang": "en",
+    "relevant": ["en.wikipedia.org"]
+  },
+  {
+    "query": "who wrote the play Hamlet and when was it written",
+    "lang": "en",
+    "relevant": ["en.wikipedia.org", "britannica.com"]
+  },
+  {
+    "query": "chemical formula for table salt",
+    "lang": "en",
+    "relevant": ["en.wikipedia.org"]
+  },
+  {
+    "query": "源氏物語 作者 紫式部",
+    "lang": "ja",
+    "relevant": ["ja.wikipedia.org"]
+  },
+  {
+    "query": "Gabriel García Márquez Cien años de soledad",
+    "lang": "es",
+    "relevant": ["es.wikipedia.org"]
+  },
+  {
+    "query": "富士山 標高 世界遺産",
+    "lang": "ja",
+    "relevant": ["ja.wikipedia.org"]
+  }
+]

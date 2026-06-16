@@ -19,7 +19,7 @@ describe("tool result shaping", () => {
   it("renders search results as Exa-style text without structured output", () => {
     const results = [
       {
-        engine: "Bing",
+        engine: "DuckDuckGo",
         snippet: "Typed JavaScript at scale.",
         title: "TypeScript",
         url: "https://www.typescriptlang.org/",
@@ -37,7 +37,7 @@ describe("tool result shaping", () => {
           "Title: TypeScript",
           "URL: https://www.typescriptlang.org/",
           "Highlights: Typed JavaScript at scale.",
-          "Source: Bing",
+          "Source: DuckDuckGo",
         ].join("\n"),
       },
     ]);

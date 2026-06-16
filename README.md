@@ -66,16 +66,19 @@ block followed by one text block per URL.
 
 ## Client API
 
-The library exports three stable entry points:
+The root entry is edge-safe and uses configured API/hosted MCP providers only.
+Use the `/node` entry when you want the full Node runtime with DuckDuckGo and
+local page-fetch fallbacks.
 
 ```ts
 import { createOpenSearch, fetch, search } from "@minpeter/opensearch";
+import { fetch as nodeFetch } from "@minpeter/opensearch/node";
 
 const results = await search("TypeScript 6 release notes", 5);
 const first = results[0];
 
 if (first) {
-  const page = await fetch(first.url);
+  const page = await nodeFetch(first.url);
   console.log(page.title, page.length);
 }
 
@@ -119,10 +122,8 @@ Current search order:
 5. Hosted MCP providers: Parallel Search MCP, then Exa MCP.
 6. Exa Search API.
 7. Independent providers: Kagi, Mojeek, and configured SearxNG instances.
-8. Keyless public providers: Startpage and Webcrawler.
-9. DuckDuckGo public page fallback.
-10. Augmented Bing fallback, with Bing-first results and parallel supplements
-    from Wikipedia, Internet Archive, and Wiby.
+8. DuckDuckGo public page fallback in the Node/full-runtime entry. Edge imports
+   omit DuckDuckGo.
 
 `web_fetch` tries Exa hosted MCP first, then TinyFish, Exa contents API, the
 local HTML/PDF extraction pipeline, and Jina Reader for sparse content.
@@ -130,16 +131,16 @@ local HTML/PDF extraction pipeline, and Jina Reader for sparse content.
 ### No-key operation
 
 The default install can search without user-supplied API keys through hosted
-Parallel MCP, hosted Exa MCP, and keyless public fallbacks. Public and hosted
-limits can change without notice, so use API keys or a self-hosted SearxNG
-instance when you need predictable production capacity.
+Parallel MCP and hosted Exa MCP. The Node/full-runtime entry also adds
+DuckDuckGo as the final public-page fallback. Public and hosted limits can
+change without notice, so use API keys or a self-hosted SearxNG instance when
+you need predictable production capacity.
 
 Set these flags to remove fallback groups:
 
 ```sh
 OPENSEARCH_ENABLE_PARALLEL_MCP=false
 OPENSEARCH_ENABLE_EXA_MCP=false
-OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS=false
 ```
 
 ### API key pools
@@ -214,10 +215,8 @@ deployments:
 `OPENSEARCH_GOOGLE_CSE_URL`, `OPENSEARCH_KAGI_URL`,
 `OPENSEARCH_MOJEEK_URL`, `OPENSEARCH_BRIGHT_DATA_SERP_URL`,
 `OPENSEARCH_SCRAPINGBEE_URL`, `OPENSEARCH_SEARCHAPI_URL`,
-`OPENSEARCH_VALYU_URL`, `OPENSEARCH_LINKUP_URL`,
-`OPENSEARCH_JINA_SEARCH_URL`, `OPENSEARCH_STARTPAGE_URL`,
-`OPENSEARCH_WEBCRAWLER_URL`, `OPENSEARCH_WIKIPEDIA_URL`,
-`OPENSEARCH_INTERNET_ARCHIVE_URL`, and `OPENSEARCH_WIBY_URL`.
+`OPENSEARCH_VALYU_URL`, `OPENSEARCH_LINKUP_URL`, and
+`OPENSEARCH_JINA_SEARCH_URL`.
 
 Credentialed endpoint overrides must use HTTPS. Plain HTTP is accepted only for
 `localhost`, `127.0.0.1`, or `::1` test servers.
@@ -236,6 +235,28 @@ pnpm run test
 pnpm run build
 pnpm --filter opensearch-mcp start
 ```
+
+## Provider metrics
+
+Quantitative, side-by-side comparison of each provider's **limit** (fill-rate,
+429/blocked, timeout, latency) and **search quality** (intrinsic heuristics,
+cross-engine consensus, labeled golden queries).
+
+```bash
+# Deterministic, no network — runs as a gated test on every PR
+pnpm --filter @minpeter/opensearch bench:offline -- --markdown /tmp/metrics.md
+
+# Live — measures only the providers whose keys are present
+pnpm --filter @minpeter/opensearch bench:live -- --out provider-metrics.json
+```
+
+- Metric definitions, formulas, and the composite score:
+  [`packages/opensearch/src/bench/README.md`](packages/opensearch/src/bench/README.md)
+- Per-provider limit/rate-limit contract:
+  [`packages/opensearch/PROVIDERS.md`](packages/opensearch/PROVIDERS.md)
+- The live monitor runs weekly via
+  [`.github/workflows/monitor.yml`](.github/workflows/monitor.yml) and uploads a
+  report artifact; the deterministic offline gate runs in `ci.yml`.
 
 ## Release
 
