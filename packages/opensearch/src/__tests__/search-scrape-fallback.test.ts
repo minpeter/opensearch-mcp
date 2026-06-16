@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { search } from "../search.ts";
+import { search } from "./full-runtime.ts";
 import {
   createMockResponse,
   readFixture,
@@ -52,28 +52,18 @@ describe("scrape search fallback", () => {
     );
   });
 
-  it("falls back to Bing when DuckDuckGo scrape is bot-detected", async () => {
+  it("does not fall back to unreliable keyless Bing when DuckDuckGo is bot-detected", async () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-github.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
-    const results = await search("github");
-
-    expect(results).toHaveLength(2);
-    expect(results[0]).toEqual({
-      engine: "Bing",
-      snippet:
-        "GitHub is the leading platform for software collaboration and version control.",
-      title: "GitHub",
-      url: "https://github.com/",
-    });
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    await expect(search("github")).rejects.toThrow(
+      "All search engines failed: DuckDuckGo [DuckDuckGo:blocked]"
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("throws a meaningful error when all enabled engines fail or are bot-detected", async () => {
@@ -81,14 +71,11 @@ describe("scrape search fallback", () => {
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-challenge.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-challenge.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("github")).rejects.toThrow(
-      "All search engines failed: DuckDuckGo, Bing [DuckDuckGo:blocked; Bing:blocked]"
+      "All search engines failed: DuckDuckGo [DuckDuckGo:blocked]"
     );
   });
 
@@ -97,13 +84,10 @@ describe("scrape search fallback", () => {
       .fn()
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-no-results.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-no-results.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("noresultsquery")).rejects.toThrow("No Results");
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

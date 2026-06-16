@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { search } from "../search.ts";
+import { search } from "./full-runtime.ts";
 import {
   createMockJsonResponse,
   createMockResponse,

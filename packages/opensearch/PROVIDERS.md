@@ -8,7 +8,8 @@ those numbers. Derived from a source audit of `src/search/providers/*`.
 
 Columns:
 
-- **Key?** — works with no API key/credential (always available in the chain).
+- **Key?** — works with no API key/credential when its provider group is
+  enabled by runtime or configuration.
 - **Limit mechanism** — how `numResults` is honored: `request-param` (sent to the
   API), `slice` (trimmed locally), `both`, or `none` (only the fallback chain
   trims afterward, e.g. scrape providers).
@@ -19,25 +20,15 @@ Columns:
 - **Timeout** — request timeout. All HTTP providers use the shared
   `REQUEST_TIMEOUT_MS = 8000`; TinyFish uses its own constant.
 
-## Keyless providers (standalone entries in the chain)
+## Keyless and hosted providers
 
-These are the engines `getSearchProviders` adds with no key, so they are exactly
-what a keyless live run measures:
+These are the engines that can run with no user-supplied API key:
 
 | Engine | Limit mechanism | Count param | 429 | Timeout |
 | --- | --- | --- | --- | --- |
-| DuckDuckGo | none (scrape) → JSON API on block | — | blocked | 8000 |
-| Bing | none (scrape) / both (augmented) | — | blocked | 8000 |
-| Startpage | slice | — | — | 8000 |
-| Webcrawler | slice | — | — | 8000 |
+| DuckDuckGo (Node/full-runtime only) | none (scrape) → JSON API on block | — | blocked | 8000 |
 | Exa (MCP) | request-param | `numResults` | blocked | 8000 |
 | Parallel (MCP) | slice | — | blocked | 8000 |
-
-**Augmented-Bing supplemental source** — when zero-key providers are enabled, the
-Bing provider additionally queries keyless **Wikipedia** (`srlimit`); its results
-surface under the `Bing` engine, so it is not benchmarked as a standalone row.
-(Wiby and InternetArchive supplements were removed — the bench's answer-page
-audit found their results were almost always off-topic noise in the top spots.)
 
 **SearxNG** is keyless but only added when `OPENSEARCH_SEARXNG_URLS` is set, so it
 is config-gated rather than always-on.
@@ -84,10 +75,9 @@ with `OPENSEARCH_ENABLE_DUCKDUCKGO_POW=false`.
 - **TinyFish** flattens any upstream error (including 429) to the `transient`
   kind, so its `rate429Rate` reads 0 even when throttled; it also uses a dedicated
   timeout constant rather than the shared 8000 ms.
-- **Scrape / keyless** providers (DuckDuckGo, Bing) carry no HTTP status on
-  blocks, so the bench's `rateLimitRate` relies on the `blocked` kind for them.
-  The live monitor excludes them by default (`--exclude DuckDuckGo,Bing`) because
-  a CI IP is frequently challenge-walled, which would otherwise distort the
-  comparison.
+- **DuckDuckGo scrape** carries no HTTP status on blocks, so the bench's
+  `rateLimitRate` relies on the `blocked` kind for it. The live monitor excludes
+  DuckDuckGo by default because a CI IP is frequently challenge-walled, which
+  would otherwise distort the comparison.
 - **MCP providers** (Exa/Parallel) map 429 by message substring and throw without
   a status, which is why `rateLimitRate` keys on the message as well as the status.

@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { CfWorkerJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/cfworker";
 
 import {
   type EnvironmentReader,
@@ -112,10 +113,13 @@ async function withExaMcpClient<T>(
   env: EnvironmentReader,
   run: (context: { client: Client }) => Promise<T>
 ): Promise<T> {
-  const client = new Client({
-    name: "opensearch-exa-mcp-client",
-    version: "0.1.0",
-  });
+  const client = new Client(
+    {
+      name: "opensearch-exa-mcp-client",
+      version: "0.1.0",
+    },
+    { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() }
+  );
   const transport = new StreamableHTTPClientTransport(
     new URL(createExaMcpRequestUrl(enabledTools, env)),
     {

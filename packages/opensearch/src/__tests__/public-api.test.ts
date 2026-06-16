@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { createOpenSearch, fetch, search } from "../index.ts";
 import {
-  createOpenSearch,
-  fetch,
+  createOpenSearch as createNodeOpenSearch,
   fetchResultSchema,
+  fetch as nodeFetch,
+  search as nodeSearch,
   SEARCH_ENGINE_NAMES,
   SearchEngineError,
   SearchExecutionError,
-  search,
   searchResultSchema,
-} from "../index.ts";
+} from "../node.ts";
 import {
   createMockResponse,
   readFixture,
@@ -27,9 +27,10 @@ describe("public API", () => {
   });
 
   it("exports stable search and fetch schemas for library consumers", async () => {
-    const publicApi = await import("../index.ts");
+    const rootApi = await import("../index.ts");
+    const nodeApi = await import("../node.ts");
     const parsedSearchResult = searchResultSchema.parse({
-      engine: "Bing",
+      engine: "DuckDuckGo",
       snippet: "Typed JavaScript at scale.",
       title: "TypeScript",
       url: "https://www.typescriptlang.org/",
@@ -41,23 +42,38 @@ describe("public API", () => {
       url: "https://example.com",
     });
 
-    expect(SEARCH_ENGINE_NAMES).toContain("Bing");
+    expect(SEARCH_ENGINE_NAMES).toContain("DuckDuckGo");
+    expect(SEARCH_ENGINE_NAMES).not.toContain("Bing");
     expect(typeof createOpenSearch).toBe("function");
-    expect(parsedSearchResult.engine).toBe("Bing");
+    expect(typeof createNodeOpenSearch).toBe("function");
+    expect(typeof fetch).toBe("function");
+    expect(typeof nodeFetch).toBe("function");
+    expect(typeof search).toBe("function");
+    expect(typeof nodeSearch).toBe("function");
+    expect(parsedSearchResult.engine).toBe("DuckDuckGo");
     expect(parsedFetchResult.length).toBe(9);
-    expect(publicApi).not.toHaveProperty("fetchUrl");
-    expect(publicApi).not.toHaveProperty("fetchUrls");
-    expect(publicApi).not.toHaveProperty("fetchUrlsWithCache");
-    expect(publicApi).not.toHaveProperty("searchOnce");
-    expect(publicApi).not.toHaveProperty("searchWithRetryAndCache");
+    expect(rootApi).not.toHaveProperty("fetchUrl");
+    expect(rootApi).not.toHaveProperty("fetchUrls");
+    expect(rootApi).not.toHaveProperty("fetchUrlsWithCache");
+    expect(rootApi).not.toHaveProperty("searchOnce");
+    expect(rootApi).not.toHaveProperty("searchWithRetryAndCache");
+    expect(nodeApi).not.toHaveProperty("fetchUrl");
+    expect(nodeApi).not.toHaveProperty("fetchUrls");
+    expect(nodeApi).not.toHaveProperty("fetchUrlsWithCache");
+    expect(nodeApi).not.toHaveProperty("searchOnce");
+    expect(nodeApi).not.toHaveProperty("searchWithRetryAndCache");
   });
 
   it("exports typed search errors for library consumers", () => {
     const executionError = new SearchExecutionError("No Results", false);
-    const engineError = new SearchEngineError("Bing", "blocked", "Blocked");
+    const engineError = new SearchEngineError(
+      "DuckDuckGo",
+      "blocked",
+      "Blocked"
+    );
 
     expect(executionError.retryable).toBe(false);
-    expect(engineError.engine).toBe("Bing");
+    expect(engineError.engine).toBe("DuckDuckGo");
     expect(engineError.kind).toBe("blocked");
   });
 
@@ -71,8 +87,8 @@ describe("public API", () => {
       );
     vi.stubGlobal("fetch", mockFetch);
 
-    const firstResults = await search("public-api-search");
-    const secondResults = await search("public-api-search");
+    const firstResults = await nodeSearch("public-api-search");
+    const secondResults = await nodeSearch("public-api-search");
 
     expect(firstResults).toEqual(secondResults);
     expect(firstResults[0]?.engine).toBe("DuckDuckGo");
@@ -96,8 +112,8 @@ describe("public API", () => {
     );
     vi.stubGlobal("fetch", mockFetch);
 
-    const batchResults = await fetch([articleUrl]);
-    const singleResult = await fetch(articleUrl);
+    const batchResults = await nodeFetch([articleUrl]);
+    const singleResult = await nodeFetch(articleUrl);
 
     expect(batchResults).toHaveLength(1);
     expect(batchResults[0]?.title).toBe("QA Article");

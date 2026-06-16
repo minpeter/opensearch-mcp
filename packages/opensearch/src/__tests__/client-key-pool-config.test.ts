@@ -9,7 +9,6 @@ import {
 const DISABLE_HOSTED_ENV = {
   OPENSEARCH_ENABLE_EXA_MCP: "false",
   OPENSEARCH_ENABLE_PARALLEL_MCP: "false",
-  OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS: "false",
 } as const;
 
 describe("createOpenSearch API key pool config", () => {

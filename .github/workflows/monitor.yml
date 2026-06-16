@@ -22,7 +22,7 @@ on:
       exclude:
         description: Comma-separated engines to exclude (e.g. keyless scrapers)
         required: false
-        default: "DuckDuckGo,Bing"
+        default: "DuckDuckGo"
       queries:
         description: Path to a queries.json (relative to packages/opensearch)
         required: false
@@ -60,12 +60,6 @@ jobs:
 
       - name: Run live benchmark
         env:
-          # Disable the always-on HTML scrapers (Startpage/Webcrawler via zero-key,
-          # plus DuckDuckGo/Bing via --exclude below): a GitHub-hosted IP is
-          # frequently challenge-walled, which would contaminate the comparison.
-          # Keyless MCP providers (Exa/Parallel) stay enabled — they are real APIs,
-          # free to measure, and worth monitoring.
-          OPENSEARCH_ENABLE_ZERO_KEY_PROVIDERS: "false"
           # One line per credential actually read by a provider. A missing secret
           # resolves to "" → that provider is simply absent and reported "skipped".
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
@@ -93,7 +87,7 @@ jobs:
           VALYU_API_KEY: ${{ secrets.VALYU_API_KEY }}
           YOU_API_KEY: ${{ secrets.YOU_API_KEY }}
           NUM_RESULTS: ${{ github.event.inputs.num_results || '10' }}
-          EXCLUDE: ${{ github.event.inputs.exclude || 'DuckDuckGo,Bing' }}
+          EXCLUDE: ${{ github.event.inputs.exclude || 'DuckDuckGo' }}
           QUERIES: ${{ github.event.inputs.queries || 'src/bench/fixtures/queries.json' }}
         run: |
           pnpm --filter @minpeter/opensearch bench:live -- \

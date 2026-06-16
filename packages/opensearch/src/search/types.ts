@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const SEARCH_ENGINE_NAMES = [
-  "Bing",
   "Brave",
   "BrightData",
   "DataForSEO",
@@ -9,7 +8,6 @@ export const SEARCH_ENGINE_NAMES = [
   "Exa",
   "Firecrawl",
   "Google",
-  "InternetArchive",
   "Jina",
   "Kagi",
   "Linkup",
@@ -21,13 +19,9 @@ export const SEARCH_ENGINE_NAMES = [
   "SearxNG",
   "SerpAPI",
   "Serper",
-  "Startpage",
   "Tavily",
   "TinyFish",
   "Valyu",
-  "Webcrawler",
-  "Wiby",
-  "Wikipedia",
   "You",
 ] as const;
 

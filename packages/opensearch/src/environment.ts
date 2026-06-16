@@ -7,7 +7,7 @@ export interface EnvironmentReader {
 }
 
 export const processEnvironmentReader: EnvironmentReader = {
-  read: (name) => process.env[name],
+  read: (name) => globalThis.process?.env?.[name],
 };
 
 export function createEnvironmentReader(

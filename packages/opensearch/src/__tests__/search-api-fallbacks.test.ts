@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { search } from "../search.ts";
+import { search } from "./full-runtime.ts";
 import {
   createMockJsonResponse,
   createMockResponse,
@@ -87,16 +87,13 @@ describe("API provider fallback semantics", () => {
       .mockResolvedValueOnce(createMockJsonResponse({ notWeb: true }))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-no-results.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-no-results.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("github")).rejects.toThrow(
-      "All search engines failed: Brave, DuckDuckGo, Bing [Brave:transient; DuckDuckGo:no-results; Bing:no-results]"
+      "All search engines failed: Brave, DuckDuckGo [Brave:transient; DuckDuckGo:no-results]"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces unexpected Exa payloads instead of masking them as no-results", async () => {
@@ -107,15 +104,12 @@ describe("API provider fallback semantics", () => {
       .mockResolvedValueOnce(createMockJsonResponse({ notResults: true }))
       .mockResolvedValueOnce(
         createMockResponse(readFixture("duckduckgo-no-results.html"))
-      )
-      .mockResolvedValueOnce(
-        createMockResponse(readFixture("bing-no-results.html"))
       );
     vi.stubGlobal("fetch", mockFetch);
 
     await expect(search("github")).rejects.toThrow(
-      "All search engines failed: Exa, DuckDuckGo, Bing [Exa:transient; DuckDuckGo:no-results; Bing:no-results]"
+      "All search engines failed: Exa, DuckDuckGo [Exa:transient; DuckDuckGo:no-results]"
     );
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });

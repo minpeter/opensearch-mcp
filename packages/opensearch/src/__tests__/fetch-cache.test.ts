@@ -15,7 +15,7 @@ vi.mock("../providers/exa-mcp/client.ts", () => ({
   fetchExaMcpBatch,
 }));
 
-import { fetchUrlsWithCache, fetchUrlWithCache } from "../fetch.ts";
+import { fetchUrlsWithCache, fetchUrlWithCache } from "./full-runtime.ts";
 
 beforeEach(() => {
   process.env.OPENSEARCH_ENABLE_EXA_MCP = "true";

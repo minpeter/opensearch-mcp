@@ -40,7 +40,7 @@ describe("search with Exa MCP", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github");
 
     expect(results).toEqual([
@@ -64,7 +64,7 @@ describe("search with Exa MCP", () => {
       );
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github");
 
     expect(results[0]?.engine).toBe("DuckDuckGo");
@@ -84,7 +84,7 @@ describe("search with Exa MCP", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github");
 
     expect(results).toEqual([
@@ -115,7 +115,7 @@ describe("search with Exa MCP", () => {
     );
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github");
 
     expect(results).toEqual([
@@ -148,7 +148,7 @@ describe("search with Exa MCP", () => {
       );
     vi.stubGlobal("fetch", fetchSpy);
 
-    const { search } = await import("../search.ts");
+    const { search } = await import("./full-runtime.ts");
     const results = await search("github");
 
     expect(results[0]?.engine).toBe("DuckDuckGo");

@@ -6,6 +6,7 @@ import {
 import {
   createFetchOperations,
   type FetchOperations,
+  type LocalFetch,
 } from "./fetch/orchestration.ts";
 import {
   type FetchResult,
@@ -35,12 +36,17 @@ export interface FetchService {
   fetchUrlWithCache(url: string): Promise<FetchResult>;
 }
 
+export interface CreateFetchServiceOptions {
+  readonly localFetch?: LocalFetch;
+}
+
 const defaultFetchService = createFetchService(processEnvironmentReader);
 
 export function createFetchService(
-  env: EnvironmentReader = processEnvironmentReader
+  env: EnvironmentReader = processEnvironmentReader,
+  options: CreateFetchServiceOptions = {}
 ): FetchService {
-  return createFetchServiceForOperations(createFetchOperations(env));
+  return createFetchServiceForOperations(createFetchOperations(env, options));
 }
 
 function createFetchServiceForOperations(

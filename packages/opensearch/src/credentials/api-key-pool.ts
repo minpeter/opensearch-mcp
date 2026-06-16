@@ -30,7 +30,7 @@ export function createApiKeyPool(
 ): ApiKeyPool {
   let apiKeyIndex = 0;
   let apiKeyPoolSource: string | undefined;
-  let processEnvReference = process.env;
+  let processEnvReference = globalThis.process?.env;
 
   return {
     getAttemptOrder() {
@@ -52,11 +52,11 @@ export function createApiKeyPool(
   function readPool(): readonly string[] {
     if (
       env === processEnvironmentReader &&
-      process.env !== processEnvReference
+      globalThis.process?.env !== processEnvReference
     ) {
       apiKeyIndex = 0;
       apiKeyPoolSource = undefined;
-      processEnvReference = process.env;
+      processEnvReference = globalThis.process?.env;
     }
 
     const source = env.read(envName);
