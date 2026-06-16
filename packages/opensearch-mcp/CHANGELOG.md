@@ -1,5 +1,18 @@
 # opensearch-mcp
 
+## 0.2.1
+
+### Patch Changes
+
+- c74bdfb: Remove unreliable keyless Bing, Startpage, Webcrawler, and augmented-Bing fallbacks from the public search engine surface, and move DuckDuckGo into the Node runtime entrypoint as the final keyless fallback.
+
+  Update the MCP server to import the Node runtime entrypoint so `web_search` keeps the DuckDuckGo fallback.
+
+- Updated dependencies [2c1ad5d]
+- Updated dependencies [c74bdfb]
+- Updated dependencies [c74bdfb]
+  - @minpeter/opensearch@0.0.1
+
 ## 0.2.0
 
 ### Minor Changes
