@@ -1,5 +1,12 @@
 # opensearch-mcp
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [900a772]
+  - @minpeter/opensearch@0.0.4
+
 ## 0.2.3
 
 ### Patch Changes

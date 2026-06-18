@@ -1,5 +1,11 @@
 # @minpeter/opensearch
 
+## 0.0.4
+
+### Patch Changes
+
+- 900a772: Add public API, feed/archive, media, TLS, and Playwright fetch fallbacks while keeping fetch results on the stable title/content/url/length shape.
+
 ## 0.0.3
 
 ### Patch Changes

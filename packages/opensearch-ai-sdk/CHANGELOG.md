@@ -1,5 +1,12 @@
 # opensearch-ai-sdk
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [900a772]
+  - @minpeter/opensearch@0.0.4
+
 ## 0.0.2
 
 ### Patch Changes
