@@ -19,6 +19,7 @@ const EXPECTED_SEARCH_PROVIDER_REGISTRY_FILES = [
   "independent.ts",
   "jina.ts",
   "llm.ts",
+  "ollama.ts",
   "parallel-mcp.ts",
   "serp.ts",
 ] as const;

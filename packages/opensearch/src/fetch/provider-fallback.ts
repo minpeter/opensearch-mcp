@@ -1,5 +1,6 @@
 import type { ApiKeyPool } from "../credentials/api-key-pool.ts";
 import type { EnvironmentReader } from "../environment.ts";
+import { readOllamaApiKey } from "../providers/ollama/client.ts";
 import type { TinyFishApiKeyPool } from "../providers/tinyfish/api-key-pool.ts";
 import { fetchTinyFishUrls } from "../providers/tinyfish/fetch.ts";
 import { DEFAULT_MAX_CHARACTERS } from "./config.ts";
@@ -9,6 +10,10 @@ import {
   tryFetchUrlsViaFirecrawl,
   tryFetchUrlViaFirecrawl,
 } from "./firecrawl-provider.ts";
+import {
+  tryFetchUrlsViaOllama,
+  tryFetchUrlViaOllama,
+} from "./ollama-provider.ts";
 import { createFetchResult, type FetchResult } from "./result.ts";
 
 export type LocalFetch = (url: string) => Promise<FetchResult>;
@@ -41,6 +46,25 @@ export async function fetchUrlViaProviders(
   url: string,
   context: FetchPipelineContext
 ): Promise<FetchResult> {
+  return await fetchUrlViaProvidersInternal(url, context, true);
+}
+
+async function fetchUrlViaProvidersInternal(
+  url: string,
+  context: FetchPipelineContext,
+  tryOllama: boolean
+): Promise<FetchResult> {
+  if (tryOllama) {
+    const ollamaResult = await tryFetchUrlViaOllama(
+      url,
+      DEFAULT_MAX_CHARACTERS,
+      context.env
+    );
+    if (ollamaResult) {
+      return ollamaResult;
+    }
+  }
+
   const exaMcpResult = await tryFetchUrlViaExaMcp(url, context);
   if (exaMcpResult) {
     return exaMcpResult;
@@ -87,6 +111,15 @@ export async function fetchUrlsViaProviders(
   maxCharacters: number,
   context: FetchPipelineContext
 ): Promise<FetchResult[]> {
+  // Ollama batch is only engaged when a cloud key is configured: without one,
+  // Ollama-local is still reached via the terminal per-URL fallback below, but
+  // gating here avoids disrupting batch providers (exaMcp/exa/firecrawl) for
+  // the default no-key deployment.
+  const ollamaResults = await tryOllamaFetchBatch(urls, maxCharacters, context);
+  if (ollamaResults) {
+    return ollamaResults;
+  }
+
   if (context.exaMcpFetchProvider?.isEnabled(context.env)) {
     try {
       const exaResults = await context.exaMcpFetchProvider.fetchBatch(
@@ -231,6 +264,26 @@ function tryFetchUrlViaExaMcp(
     return Promise.resolve(null);
   }
   return provider.fetchUrl(url, context.env);
+}
+
+/**
+ * Ollama batch entry: returns null when no cloud key is configured so the
+ * existing batch pipeline runs unchanged; otherwise fetches each URL via
+ * Ollama and delegates per-URL failures back to the provider chain (skipping
+ * Ollama to avoid re-probing the same failing URL).
+ */
+async function tryOllamaFetchBatch(
+  urls: string[],
+  maxCharacters: number,
+  context: FetchPipelineContext
+): Promise<FetchResult[] | null> {
+  if (!readOllamaApiKey(context.env)) {
+    return null;
+  }
+
+  return await tryFetchUrlsViaOllama(urls, maxCharacters, context.env, (url) =>
+    fetchUrlViaProvidersInternal(url, context, false)
+  );
 }
 
 async function fetchExaApiForContext(
