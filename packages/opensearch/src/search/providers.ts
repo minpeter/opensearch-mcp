@@ -10,6 +10,7 @@ import { createExaSearchProvider } from "./providers/exa.ts";
 import { createFirecrawlSearchProvider } from "./providers/firecrawl.ts";
 import { createIndependentProviders } from "./providers/independent.ts";
 import { createLlmNativeProviders } from "./providers/llm.ts";
+import { createOllamaSearchProvider } from "./providers/ollama.ts";
 import { createSerpProviders } from "./providers/serp.ts";
 import type { SearchProvider } from "./types.ts";
 
@@ -42,6 +43,10 @@ export function getSearchProviders(
 ): SearchProvider[] {
   const providers: SearchProvider[] = [];
 
+  // Ollama goes first when opted in (OPENSEARCH_ENABLE_OLLAMA=true): a signed-in
+  // local daemon is keyless and high quality, and it fails fast (instant
+  // ECONNREFUSED) otherwise so the chain moves on without cost.
+  pushProvider(providers, createOllamaSearchProvider(env));
   pushProvider(providers, createTinyFishSearchProvider(env));
   providers.push(...createLlmNativeProviders(env));
   providers.push(...createSerpProviders(env));
